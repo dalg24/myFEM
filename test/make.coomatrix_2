@@ -1,0 +1,20 @@
+coomatrix_2 : coomatrix_2.o \
+              COOMatrix.o \
+              Vector.o
+
+	g++ coomatrix_2.o \
+            COOMatrix.o \
+            Vector.o \
+         -o coomatrix_2
+
+coomatrix_2.o : coomatrix_2.cpp
+
+	g++ -c coomatrix_2.cpp
+
+COOMatrix.o : ../src/COOMatrix.cpp
+
+	g++ -c ../src/COOMatrix.cpp
+
+Vector.o : ../src/Vector.cpp
+
+	g++ -c ../src/Vector.cpp

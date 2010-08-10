@@ -1,0 +1,26 @@
+polynomial_0 : polynomial_0.o \
+                factorial.o \
+                Poly1D.o \
+                Polynomial.o
+
+	g++ polynomial_0.o \
+            factorial.o \
+            Poly1D.o \
+            Polynomial.o \
+         -o polynomial_0
+
+polynomial_0.o : polynomial_0.cpp
+
+	g++ -c polynomial_0.cpp
+
+factorial.o : ../src/factorial.cpp
+
+	g++ -c ../src/factorial.cpp
+
+Polynomial.o : ../src/Polynomial.cpp
+
+	g++ -c ../src/Polynomial.cpp
+
+Poly1D.o : ../src/Poly1D.cpp
+
+	g++ -c ../src/Poly1D.cpp

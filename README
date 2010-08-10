@@ -1,0 +1,28 @@
+Documentation
+-------------
+
+[shell prompt]$ doxygen doc/Doxyfile
+[shell prompt]$ firefox doc/html/index.html &
+
+
+Contributing
+------------
+
+[shell prompt]$ vim <file>.tex
+[shell prompt]$ git add <file>.tex
+[shell prompt]$ git commit -m 'comment your changes'
+[shell prompt]$ git push
+
+
+Note:
+To be able to push to the remote repository you need to send your ssh public key to <lebrungd@neo.tamu.edu>
+Copy and paste the content of the file ~/.ssh/id_rsa.pub
+If it doesn't exist, do a
+[shell prompt]$ ssh-keygen -t rsa
+
+
+Authors
+-------
+
+Damien Lebrun-Grandie
+Bruno Turcksin
