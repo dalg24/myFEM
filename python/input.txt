@@ -1,0 +1,4 @@
+# BEGIN GEOMETRY
+4          -2.09 3 4 5 0
+1 5  2            
+# END GEOMETRY
