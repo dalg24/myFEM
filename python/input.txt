@@ -1,4 +1,12 @@
+# BEGIN DIMENSION
+2
+# END DIMENSION
+
 # BEGIN GEOMETRY
-4          -2.09 3 4 5 0
-1 5  2            
+4  -1 -1  -1 1  1 1  1 -1
+4  -2 -2  -2 2  2 2  2 -2
 # END GEOMETRY
+
+# BEGIN CELLS
+10
+# END CELLS
