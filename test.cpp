@@ -19,7 +19,6 @@ public:
   friend std::ostream& operator<<(std::ostream& os, const Point& p) { os<<"( "<<p.x<<" )"; return os; }
 
   double x; 
-
 }; // end class Point
 
 ////////////////////////// QUADRATURE RULE //////////////////////////////////////
@@ -28,18 +27,11 @@ public:
   QuadratureRule() { }
   ~QuadratureRule() { }
   QuadratureRule(const QuadratureRule& qr) : points(qr.points), weights(qr.weights) { }
-  QuadratureRule& operator=(const QuadratureRule& qr) {
-    if (this==&qr) return *this;
-    points = qr.points;
-    weights = qr.weights;
-    return *this;
-  }
+  QuadratureRule& operator=(const QuadratureRule& qr) { if (this==&qr) return *this; points = qr.points; weights = qr.weights; return *this; }
 
   unsigned int getNumberQuadraturePoints() const { assert(points.size()==weights.size()); return points.size(); }
-
   Point getQuadraturePoint(unsigned int i) const { return points[i]; }
   std::vector<Point> getQuadraturePoints() const { return points; }
-
   double getWeight(unsigned int i) const { return weights[i]; }
   std::vector<double> getWeights() const { return weights; }
 
@@ -51,16 +43,17 @@ protected:
 class GaussianTwoPoints : public QuadratureRule {
 public:
   GaussianTwoPoints() {
-    points.resize(2); points[0].x = -1.0 / sqrt(3.0); points[1].x = 1.0 / sqrt(3.0);
-    weights.resize(2); weights[0] = 1.0; weights[1] = 1.0;
+    points.push_back(Point(-1.0 / sqrt(3.0))); weights.push_back(1.0);
+    points.push_back(Point(1.0 / sqrt(3.0))); weights.push_back(1.0);
   }
 }; // end class GaussianTwoPoints
 
 class GaussianThreePoints : public QuadratureRule {
 public:
   GaussianThreePoints() {
-    points.resize(3); points[0].x = -sqrt(3.0 / 5.0); points[1].x = 0.0; points[2].x = sqrt(3.0 / 5.0);
-    weights.resize(3); weights[0] = 5.0 / 9.0; weights[1] = 8.0 / 9.0; weights[2] = 5.0 / 9.0;
+    points.push_back(Point(-sqrt(3.0 / 5.0))); weights.push_back(5.0 / 9.0);
+    points.push_back(Point(0.0)); weights.push_back(8.0 / 9.0);
+    points.push_back(Point(sqrt(3.0 / 5.0))); weights.push_back(5.0 / 9.0);
   }
 }; // end class GaussianThreePoints
 
@@ -70,69 +63,87 @@ public:
   BasisFunctions() { }
   ~BasisFunctions() { }
   BasisFunctions(const BasisFunctions& bf) : nodes(bf.nodes) { }
-  BasisFunctions& operator=(const BasisFunctions& bf) {
-    if (this==&bf) return *this;
-    nodes = bf.nodes;
-    return *this;
-  }
+  BasisFunctions& operator=(const BasisFunctions& bf) { if (this==&bf) return *this; nodes = bf.nodes; return *this; }
 
+
+  unsigned int getNumberNodes() const { return nodes.size(); }
+  Point getNode(unsigned int i) const { return nodes[i]; }
   std::vector<Point> getNodes() const { return nodes; }
 
-  virtual std::vector<double> val(Point) const = 0;
-  virtual std::vector<double> dx(Point) const = 0;
+  virtual double val(unsigned int, Point) const = 0;
+  virtual double dx(unsigned int, Point) const = 0;
 
 protected:
   std::vector<Point> nodes;
-
 }; // end class BasisFunctions
 
 class PiecewiseLinear : public BasisFunctions {
 public:             
-  PiecewiseLinear(const std::vector<Point> sp) {
-    nodes = sp;
-  }
+  PiecewiseLinear(std::vector<Point> sp) { nodes = sp; }
 
-  std::vector<double> val(Point p) const {
+  double val(unsigned int i, Point p) const {
     assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
-    std::vector<double> values(2);
-    values[0] = (nodes[1].x - p.x) / (nodes[1].x - nodes[0].x); 
-    values[1] = (p.x - nodes[0].x) / (nodes[1].x - nodes[0].x); 
-    return values;
+    double values;
+    if (i == 0) {
+      value = (nodes[1].x - p.x) / (nodes[1].x - nodes[0].x); 
+    } else if (i == 1) {
+      value = (p.x - nodes[0].x) / (nodes[1].x - nodes[0].x); 
+    } else {
+      std::cerr<<"aie"<<std::endl;
+      abort();
+    }
+    return value;
   }
 
-  std::vector<double> dx(Point p) const {
+  double> dx(unsigned int i, Point p) const {
     assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
-    std::vector<double> values;
-    values[0] = -1.0 / (nodes[1].x - nodes[0].x); 
-    values[1] = 1.0 / (nodes[1].x - nodes[0].x); 
-    return values;
+    double value;
+    if (i == 0) {
+      value = -1.0 / (nodes[1].x - nodes[0].x); 
+    } else if (i == 1) {
+      value = 1.0 / (nodes[1].x - nodes[0].x); 
+    } else {
+      std::cerr<<"aie"<<std::endl;
+      abort();
+    }
+    return value;
   }
-
 }; // end class PiecewiseLinear
 
 class PiecewiseQuadratic : public BasisFunctions {
 public:             
-  PiecewiseQuadratic(const std::vector<Point> sp) {
-    nodes = sp;
-    nodes.push_back((sp[0] + sp[1]) / 2.0);
+  PiecewiseQuadratic(std::vector<Point> sp) { nodes = sp; nodes.push_back((sp[0] + sp[1]) / 2.0); }
+
+  double val(unsigned int i, Point p) const {
+    assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
+    double values(3);
+    if (i == 0) {
+      value = (nodes[1].x - p.x) * (nodes[2].x - p.x) / ((nodes[1].x - nodes[0].x) * (nodes[2].x - nodes[0].x)); 
+    } else if (i == 1) {
+      value = (nodes[2].x - p.x) * (nodes[0].x - p.x) / ((nodes[2].x - nodes[1].x) * (nodes[0].x - nodes[1].x)); 
+    } else if (i == 2) {
+      value = (nodes[0].x - p.x) * (nodes[1].x - p.x) / ((nodes[0].x - nodes[2].x) * (nodes[1].x - nodes[2].x)); 
+    } else {
+      std::cerr<<"aie"<<std::endl;
+      abort();
+    }
+    return value;
   }
 
-  std::vector<double> val(Point p) const {
+  double dx(unsigned int i, Point p) const {
     assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
-    std::vector<double> values(3);
-    values[0] = (nodes[1].x - p.x) * (nodes[2].x - p.x) / ((nodes[1].x - nodes[0].x) * (nodes[2].x - nodes[0].x)); 
-    values[1] = (nodes[2].x - p.x) * (nodes[0].x - p.x) / ((nodes[2].x - nodes[1].x) * (nodes[0].x - nodes[1].x)); 
-    values[2] = (nodes[0].x - p.x) * (nodes[1].x - p.x) / ((nodes[0].x - nodes[2].x) * (nodes[1].x - nodes[2].x)); 
-    return values;
-  }
-
-  std::vector<double> dx(Point p) const {
-    assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
-    std::vector<double> values(3);
-    values[0] = (2.0 * p.x - nodes[1].x - nodes[2].x) / ((nodes[1].x - nodes[0].x) * (nodes[2].x - nodes[0].x)); 
-    values[1] = (2.0 * p.x - nodes[2].x - nodes[0].x) / ((nodes[2].x - nodes[1].x) * (nodes[0].x - nodes[1].x)); 
-    values[2] = (2.0 * p.x - nodes[0].x - nodes[1].x) / ((nodes[0].x - nodes[2].x) * (nodes[1].x - nodes[2].x)); 
-    return values;
+    double values(3);
+    if (i == 0) {
+      value = (2.0 * p.x - nodes[1].x - nodes[2].x) / ((nodes[1].x - nodes[0].x) * (nodes[2].x - nodes[0].x)); 
+    } else if (i == 1) {
+      value = (2.0 * p.x - nodes[2].x - nodes[0].x) / ((nodes[2].x - nodes[1].x) * (nodes[0].x - nodes[1].x)); 
+    } else if (i == 2) {
+      value = (2.0 * p.x - nodes[0].x - nodes[1].x) / ((nodes[0].x - nodes[2].x) * (nodes[1].x - nodes[2].x)); 
+    } else {
+      std::cerr<<"aie"<<std::endl;
+      abort();
+    }
+    return value;
   }
 
 }; // end class PiecewiseQuadratic
@@ -162,7 +173,6 @@ protected:
 ////////////////////////// FINITE ELEMENT //////////////////////////////////////
 class FiniteElement {
 public:
-  BasisFunctions *bf; 
 
   Point mapGlobalToLocal(Point g) {
     Point l;
@@ -175,7 +185,7 @@ public:
   }
 
 protected:
-  std::vector<Point> supportPoints;
+  std::vector<Point> sp;
 };
 
 
