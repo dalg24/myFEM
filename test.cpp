@@ -1,5 +1,8 @@
 #include <iostream>
+#include <fstream>
+#include <iomanip>
 #include <vector>
+#include <map>
 #include <string>
 #include <cstdlib>
 #include <cassert>
@@ -24,7 +27,7 @@ public:
 ////////////////////////// QUADRATURE RULE //////////////////////////////////////
 class QuadratureRule {
 public:
-  QuadratureRule() { }
+  QuadratureRule() : type("notype") { }
   ~QuadratureRule() { }
   QuadratureRule(const QuadratureRule& qr) : points(qr.points), weights(qr.weights) { }
   QuadratureRule& operator=(const QuadratureRule& qr) { if (this==&qr) return *this; points = qr.points; weights = qr.weights; return *this; }
@@ -35,11 +38,13 @@ public:
   double getWeight(unsigned int iqp) const { return weights[iqp]; }
   std::vector<double> getWeights() const { return weights; }
   std::vector<Point> getSupportPoints() const { return sp; }
+  std::string getType() const { return type; }
 
 protected:
   std::vector<Point> points;
   std::vector<double> weights;
   std::vector<Point> sp;
+  std::string type;
 }; // end class QuadratureRule
 
 class GaussianTwoPoints : public QuadratureRule {
@@ -48,6 +53,7 @@ public:
     points.push_back(Point(-1.0 / sqrt(3.0))); weights.push_back(1.0);
     points.push_back(Point(1.0 / sqrt(3.0))); weights.push_back(1.0);
     sp.push_back(Point(-1.0)); sp.push_back(Point(1.0));
+    type = "GaussianTwoPoints";
   }
 }; // end class GaussianTwoPoints
 
@@ -58,21 +64,22 @@ public:
     points.push_back(Point(0.0)); weights.push_back(8.0 / 9.0);
     points.push_back(Point(sqrt(3.0 / 5.0))); weights.push_back(5.0 / 9.0);
     sp.push_back(Point(-1.0)); sp.push_back(Point(1.0));
+    type = "GaussianThreePoints";
   }
 }; // end class GaussianThreePoints
 
 ////////////////////////// SHAPE FUNCTIONS //////////////////////////////////////
 class BasisFunctions {
 public:
-  BasisFunctions() { }
+  BasisFunctions() : type("notype") { }
   ~BasisFunctions() { }
   BasisFunctions(const BasisFunctions& bf) : nodes(bf.nodes) { }
   BasisFunctions& operator=(const BasisFunctions& bf) { if (this==&bf) return *this; nodes = bf.nodes; return *this; }
 
-
   unsigned int getNumberOfNodes() const { return nodes.size(); }
   Point getNode(unsigned int idof) const { return nodes[idof]; }
   std::vector<Point> getNodes() const { return nodes; }
+  std::string getType() const { return type; }
 
   std::vector<Point> getSupportPoints() const { std::vector<Point> sp; sp.push_back(nodes[0]); sp.push_back(nodes[1]); return sp;}
 
@@ -81,11 +88,12 @@ public:
 
 protected:
   std::vector<Point> nodes;
+  std::string type;
 }; // end class BasisFunctions
 
 class PiecewiseLinear : public BasisFunctions {
 public:             
-  PiecewiseLinear(std::vector<Point> sp) { nodes = sp; }
+  PiecewiseLinear(std::vector<Point> sp) { nodes = sp; type = "PiecewiseLinear"; }
 
   double getVal(unsigned int idof, Point p) const {
     assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
@@ -118,7 +126,7 @@ public:
 
 class PiecewiseQuadratic : public BasisFunctions {
 public:             
-  PiecewiseQuadratic(std::vector<Point> sp) { nodes = sp; nodes.push_back((sp[0] + sp[1]) / 2.0); }
+  PiecewiseQuadratic(std::vector<Point> sp) { nodes = sp; nodes.push_back((sp[0] + sp[1]) / 2.0); type = "PiecewiseQuadratic"; }
 
   double getVal(unsigned int idof, Point p) const {
     assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
@@ -177,6 +185,7 @@ public:
   std::vector<Point> getSupportPoints() const { return sp; }
   double getVal(unsigned int idof, Point p) const { return bf->getVal(idof, p); }
   double getDx(unsigned int idof, Point p) const { return bf->getDx(idof, p); }
+  std::string getTypeOfBasisFunction() const { return bf->getType(); }
 
 protected:
   std::vector<Point> sp; 
@@ -193,14 +202,27 @@ public:
     }
   }
 
-  Point mapGlobalToLocal(Point g) const {
+  void setDOF(unsigned int& dc) { 
+    if ((dof.size() != 0) 
+        &&(m.size() != 0)) {
+      std::cerr<<"DOF have already been set before..."<<std::endl;
+      abort();
+    }
+    unsigned int ndof = re->getNumberOfNodes();
+    for (unsigned int idof = 0; idof < ndof; ++idof, ++dc) {
+      dof.push_back(dc);
+      m[idof] = dc;
+    }
+  }
+
+  Point mapGlobal2Local(Point g) const {
     std::vector<Point> ref_sp = re->getSupportPoints();
     assert(sp[0].x <= g.x); assert(g.x <= sp[1].x);
     Point l;
     l.x = ref_sp[0].x + (ref_sp[1].x - ref_sp[0].x) * (g.x - sp[0].x) / (sp[1].x - sp[0].x);
     return l;
   }
-  Point mapLocalToGlobal(Point l) const {
+  Point mapLocal2Global(Point l) const {
     std::vector<Point> ref_sp = re->getSupportPoints();
     assert(ref_sp[0].x <= l.x); assert(l.x <= ref_sp[1].x);
     Point g;
@@ -209,13 +231,17 @@ public:
   }
   double getDeterminantOfJacobian() const { std::vector<Point> ref_sp = re->getSupportPoints(); return (sp[1].x - sp[0].x) / (ref_sp[1].x - ref_sp[0].x); }
   double getValByLocal(unsigned int idof, Point l) const { return re->getVal(idof, l); }
-  double getValByGlobal(unsigned int idof, Point g) const { Point l = mapGlobalToLocal(g); return re->getVal(idof, l); }
+  double getValByGlobal(unsigned int idof, Point g) const { Point l = mapGlobal2Local(g); return re->getVal(idof, l); }
   double getDxByLocal(unsigned int idof, Point l) const { return re->getDx(idof, l); }
-  double getDxByGlobal(unsigned int idof, Point g) const { Point l = mapGlobalToLocal(g); return re->getDx(idof, l); }
+  double getDxByGlobal(unsigned int idof, Point g) const { Point l = mapGlobal2Local(g); return re->getDx(idof, l); }
   unsigned int getNumberOfNodes() const { return re->getNumberOfNodes(); }
+  unsigned int getNumberOfDOF() const { assert(dof.size() != 0); return dof.size(); }
+  std::map<unsigned int, unsigned int> getDOFMap() const { assert(m.size() != 0); return m; }
 
 protected:
   std::vector<Point> sp;
+  std::vector<unsigned int> dof;
+  std::map<unsigned int, unsigned int> m;
   ReferenceElement *re;
 }; // end class FiniteElement
 
@@ -239,9 +265,8 @@ public:
       for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
         ShapeValues[idof][iqp] = fe->getValByLocal(idof, qr->getQuadraturePoint(iqp));
         ShapeDx[idof][iqp] = fe->getDxByLocal(idof, qr->getQuadraturePoint(iqp));
-      } 
-    }
-
+      } // end for iqp
+    } // end for idof
   }
 
   double getDeterminantOfJacobianTimesWeight(unsigned int iqp) const { return Weights[iqp]*DeterminantOfJacobian; }
@@ -251,7 +276,7 @@ public:
     std::vector<Point> qps;
     const unsigned int nqp = qr->getNumberOfQuadraturePoints();
     for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
-      qps.push_back(fe->mapLocalToGlobal(qr->getQuadraturePoint(iqp)));
+      qps.push_back(fe->mapLocal2Global(qr->getQuadraturePoint(iqp)));
     }
     return qps;
   }
@@ -278,32 +303,106 @@ double f(Point p) { return f(p.x); };
 int main(int argc, char *argv[]) {
 
   { /** nouveau test */
-  unsigned int numberOfElements = 10;
-  ReferenceElement referenceElement;
+  unsigned int nel = 10;
+  // construct nel elements
+  ReferenceElement referenceElement("PiecewiseLinear");
+  //ReferenceElement referenceElement("PiecewiseQuadratic");
   std::vector<FiniteElement> finiteElements;
-  Point startPoint(0.0); Point endPoint(10.0);
-  for (unsigned int iElement; iElement < numberOfElements; ++iElement) {
+  Point startPoint(0.0); Point endPoint(1.0);
+  for (unsigned int iel; iel < nel; ++iel) {
     std::vector<Point> supportPoints;
-    supportPoints.push_back(startPoint+double(iElement)/double(numberOfElements)*(endPoint-startPoint));
-    supportPoints.push_back(startPoint+double(iElement+1)/double(numberOfElements)*(endPoint-startPoint));
-    //std::cout<<iElement<<"  "<<supportPoints[0]<<"  "<<supportPoints[1]<<"\n";
+    supportPoints.push_back(startPoint+double(iel)/double(nel)*(endPoint-startPoint));
+    supportPoints.push_back(startPoint+double(iel+1)/double(nel)*(endPoint-startPoint));
+    //std::cout<<iel<<"  "<<supportPoints[0]<<"  "<<supportPoints[1]<<"\n";
     finiteElements.push_back(FiniteElement(supportPoints, &referenceElement));
-  }
+  } // end for iel
+
+  // distribute the Degrees Of Freedoms
+  // TODO: need to come up with something better than this
+  unsigned int dofCounter = 0;
+  for (unsigned int iel; iel < nel; ++iel) {
+    finiteElements[iel].setDOF(dofCounter);
+    dofCounter--;
+  } // end for iel
+  dofCounter++;
+
+  std::vector<std::vector<double> > globalMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
+  std::vector<double> globalRHS(dofCounter, 0.0);
 
   GaussianTwoPoints quadratureRule;
   UpdateFlags updateFlags;
 
   FEValues feValues(NULL, &quadratureRule, updateFlags); 
-  for (unsigned int iElement; iElement < numberOfElements; ++iElement) {
-    feValues.reinit(&finiteElements[iElement]);
+  for (unsigned int iel = 0; iel < nel; ++iel) {
+    feValues.reinit(&finiteElements[iel]);
+
     std::vector<Point> quadraturePoints = feValues.getQuadraturePoints();
-    const unsigned int numberOfPoints = quadraturePoints.size();
-    std::cout<<iElement<<"  ";
-    for (unsigned int iPoint = 0; iPoint < numberOfPoints; ++iPoint) {
-      std::cout<<"  "<<quadraturePoints[iPoint]<<"  ";
-    }
+
+    const unsigned int nqp = quadraturePoints.size();
+    std::cout<<iel<<"  ";
+    for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
+      std::cout<<"  "<<quadraturePoints[iqp]<<"  ";
+    } // end for iqp
     std::cout<<"\n";
-  }
+
+    std::map<unsigned int, unsigned int> dofMap = finiteElements[iel].getDOFMap();
+    const unsigned int ndof = finiteElements[iel].getNumberOfDOF();
+    /*for (unsigned int idof = 0; idof < ndof; ++idof) {
+      std::cout<<idof<<" -> "<<dofMap[idof]<<"\n";
+    } // end for idof*/
+
+    std::vector<std::vector<double> > localMatrix(ndof, std::vector<double>(ndof, 0.0));
+    for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
+      for (unsigned int idof = 0; idof < ndof; ++idof) {
+        for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
+          localMatrix[idof][jdof] += ( a(quadraturePoints[iqp]) * feValues.getShapeDx(idof, iqp) * feValues.getShapeDx(jdof, iqp)
+                                       + q(quadraturePoints[iqp]) * feValues.getShapeValue(idof, iqp) * feValues.getShapeValue(jdof, iqp)
+                                     ) * feValues.getDeterminantOfJacobianTimesWeight(iqp);
+        } // end for jdof
+      } // end for idof
+    } //end for iqp
+
+    std::vector<double> localRHS(ndof, 0.0);
+    for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
+      for (unsigned int idof = 0; idof < ndof; ++idof) {
+        localRHS[idof] += f(quadraturePoints[iqp]) * feValues.getShapeValue(idof, iqp) * feValues.getDeterminantOfJacobianTimesWeight(iqp);
+        /*
+        std::cout<<iqp<<quadraturePoints[iqp]<<idof<<"  "
+          <<"f="<<f(quadraturePoints[iqp])<<"  "
+          <<"phi_"<<idof<<"="<<feValues.getShapeValue(idof, iqp)<<"  "
+          <<"JxW="<<feValues.getDeterminantOfJacobianTimesWeight(iqp)<<"\n";
+        */
+      } // end for idof
+    } //end for iqp
+
+    for (unsigned int idof = 0; idof < ndof; ++idof) {
+      for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
+        globalMatrix[dofMap[idof]][dofMap[jdof]] += localMatrix[idof][jdof];
+        std::cout<<localMatrix[idof][jdof]<<"  ";
+      } // end for jdof
+      globalRHS[dofMap[idof]] += localRHS[idof];
+      std::cout<<"||  "<<localRHS[idof]<<"\n";
+    } // end for idof
+
+  } // end for iel
+
+  std::cout<<dofCounter<<"\n";
+
+  std::fstream foutMatrix;
+  std::fstream foutRHS;
+  foutMatrix.open("matrix.dat", std::fstream::out);
+  foutRHS.open("rhs.dat", std::fstream::out);
+  for (unsigned int idof = 0; idof < dofCounter; ++idof) {
+    for (unsigned int jdof = 0; jdof < dofCounter; ++jdof) {
+      std::cout<<std::setw(7)<<std::setprecision(3)<<globalMatrix[idof][jdof]<<"  ";
+      foutMatrix<<std::setw(9)<<std::setprecision(5)<<globalMatrix[idof][jdof]<<"  ";
+    } // end for jdof
+    std::cout<<"||  "<<std::setprecision(3)<<globalRHS[idof]<<"\n";
+    foutMatrix<<"\n";
+    foutRHS<<std::setprecision(5)<<globalRHS[idof]<<"\n";
+  } // end for idof
+    foutMatrix.close();
+    foutRHS.close();
 
   std::cout<<"just checking\n";
   }
@@ -313,7 +412,7 @@ int main(int argc, char *argv[]) {
   ReferenceElement *referenceElement = new ReferenceElement;
   std::vector<Point> supportPoints;  supportPoints.push_back(Point(0.0));  supportPoints.push_back(Point(4.0)); 
   FiniteElement *finiteElement = new FiniteElement(supportPoints, referenceElement);
-  std::cout<<finiteElement->mapGlobalToLocal(Point(1.0))<<finiteElement->mapLocalToGlobal(Point(0.0))<<std::endl;
+  std::cout<<finiteElement->mapGlobal2Local(Point(1.0))<<finiteElement->mapLocal2Global(Point(0.0))<<std::endl;
   QuadratureRule *quadratureRule = new GaussianTwoPoints;
   UpdateFlags dummyUpdateFlags;
   FEValues *feValues = new FEValues(finiteElement, quadratureRule, dummyUpdateFlags);
