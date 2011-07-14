@@ -83,7 +83,7 @@ public:
 
   double val(unsigned int i, Point p) const {
     assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
-    double values;
+    double value;
     if (i == 0) {
       value = (nodes[1].x - p.x) / (nodes[1].x - nodes[0].x); 
     } else if (i == 1) {
@@ -95,7 +95,7 @@ public:
     return value;
   }
 
-  double> dx(unsigned int i, Point p) const {
+  double dx(unsigned int i, Point p) const {
     assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
     double value;
     if (i == 0) {
@@ -116,7 +116,7 @@ public:
 
   double val(unsigned int i, Point p) const {
     assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
-    double values(3);
+    double value;
     if (i == 0) {
       value = (nodes[1].x - p.x) * (nodes[2].x - p.x) / ((nodes[1].x - nodes[0].x) * (nodes[2].x - nodes[0].x)); 
     } else if (i == 1) {
@@ -132,7 +132,7 @@ public:
 
   double dx(unsigned int i, Point p) const {
     assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
-    double values(3);
+    double value;
     if (i == 0) {
       value = (2.0 * p.x - nodes[1].x - nodes[2].x) / ((nodes[1].x - nodes[0].x) * (nodes[2].x - nodes[0].x)); 
     } else if (i == 1) {
@@ -165,6 +165,11 @@ public:
   }
   ~ReferenceElement() { delete bf; }
 
+  unsigned int getNumberNodes() const { return bf->getNumberNodes(); }
+  Point getNode(unsigned int i) const { return bf->getNode(i); }
+  std::vector<Point> getNodes() const { return bf->getNodes(); }
+  std::vector<Point> getSupportPoints() const { return sp; }
+
 protected:
   std::vector<Point> sp; 
   BasisFunctions *bf;
@@ -173,23 +178,42 @@ protected:
 ////////////////////////// FINITE ELEMENT //////////////////////////////////////
 class FiniteElement {
 public:
+  FiniteElement(const std::vector<Point>& t, ReferenceElement *b) : sp(t), re(b) { 
+    if (sp.size() != b->getSupportPoints().size()) {
+      std::cerr<<"pas bien"<<std::endl;
+      abort();
+    }
+  }
 
   Point mapGlobalToLocal(Point g) {
+    std::vector<Point> ref_sp = re->getSupportPoints();
+    assert(sp[0].x <= g.x); assert(g.x <= sp[1].x);
     Point l;
-    l.x = bf->getNodes()[0].x + (bf->getNodes()[1].x - bf->getNodes()[0].x) * (g.x - supportPoints[0].x) / (supportPoints[1].x - supportPoints[0].x);
+    l.x = ref_sp[0].x + (ref_sp[1].x - ref_sp[0].x) * (g.x - sp[0].x) / (sp[1].x - sp[0].x);
     return l;
   }
 
   Point mapLocalToGlobal(Point l) {
-
+    std::vector<Point> ref_sp = re->getSupportPoints();
+    assert(ref_sp[0].x <= l.x); assert(l.x <= ref_sp[1].x);
+    Point g;
+    g.x = sp[0].x + (sp[1].x - sp[0].x) * (l.x - ref_sp[0].x) / (ref_sp[1].x - ref_sp[0].x);
+    return g;
   }
 
 protected:
   std::vector<Point> sp;
+  ReferenceElement *re;
 };
 
 
 int main(int argc, char *argv[]) {
+  ReferenceElement *referenceElement = new ReferenceElement;
+  std::vector<Point> supportPoints;  supportPoints.push_back(Point(0.0));  supportPoints.push_back(Point(4.0)); 
+  FiniteElement *finiteElement = new FiniteElement(supportPoints, referenceElement);
+  std::cout<<finiteElement->mapGlobalToLocal(Point(1.0))<<finiteElement->mapLocalToGlobal(Point(0.0))<<std::endl;
+  delete finiteElement;
+  delete referenceElement;
 
   Point *pp;
   pp = new Point(-3.0);
@@ -217,10 +241,9 @@ int main(int argc, char *argv[]) {
   for (unsigned int i = 0; i < n_qp; ++i)
     qp.push_back(Point(-1.0+i*2.0/double(n_qp-1)));
   for (unsigned int i = 0; i < n_qp; ++i) {
-    std::vector<double> v = bf->val(qp[i]);
     std::cout<<"x="<<qp[i].x<<"  ";
-    for (unsigned int j = 0; j < v.size(); ++j) {
-      std::cout<<"phi_"<<j<<"="<<v[j]<<"  ";
+    for (unsigned int j = 0; j < bf->getNumberNodes(); ++j) {
+      std::cout<<"phi_"<<j<<"="<<bf->val(j, qp[j])<<"  ";
     }
     std::cout<<"\n";
   }
