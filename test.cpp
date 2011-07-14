@@ -267,7 +267,49 @@ protected:
   UpdateFlags uf;
 }; // end class FEValues
 
+// solve -d/dx(a(x) d/dx(u)) + q(x) u(x) = f(x) for u(x) and x in (0,1)
+double a(double x) { return 1 + x; };
+double q(double x) { return x; };
+double f(double x) { return x*cos(M_PI*x) + M_PI*sin(M_PI*x) + M_PI*M_PI*(1+x)*cos(M_PI*x); };
+double a(Point p) { return a(p.x); };
+double q(Point p) { return q(p.x); };
+double f(Point p) { return f(p.x); };
+
 int main(int argc, char *argv[]) {
+
+  { /** nouveau test */
+  unsigned int numberOfElements = 10;
+  ReferenceElement referenceElement;
+  std::vector<FiniteElement> finiteElements;
+  Point startPoint(0.0); Point endPoint(10.0);
+  for (unsigned int iElement; iElement < numberOfElements; ++iElement) {
+    std::vector<Point> supportPoints;
+    supportPoints.push_back(startPoint+double(iElement)/double(numberOfElements)*(endPoint-startPoint));
+    supportPoints.push_back(startPoint+double(iElement+1)/double(numberOfElements)*(endPoint-startPoint));
+    //std::cout<<iElement<<"  "<<supportPoints[0]<<"  "<<supportPoints[1]<<"\n";
+    finiteElements.push_back(FiniteElement(supportPoints, &referenceElement));
+  }
+
+  GaussianTwoPoints quadratureRule;
+  UpdateFlags updateFlags;
+
+  FEValues feValues(NULL, &quadratureRule, updateFlags); 
+  for (unsigned int iElement; iElement < numberOfElements; ++iElement) {
+    feValues.reinit(&finiteElements[iElement]);
+    std::vector<Point> quadraturePoints = feValues.getQuadraturePoints();
+    const unsigned int numberOfPoints = quadraturePoints.size();
+    std::cout<<iElement<<"  ";
+    for (unsigned int iPoint = 0; iPoint < numberOfPoints; ++iPoint) {
+      std::cout<<"  "<<quadraturePoints[iPoint]<<"  ";
+    }
+    std::cout<<"\n";
+  }
+
+  std::cout<<"just checking\n";
+  }
+
+
+  { /** test finite element */
   ReferenceElement *referenceElement = new ReferenceElement;
   std::vector<Point> supportPoints;  supportPoints.push_back(Point(0.0));  supportPoints.push_back(Point(4.0)); 
   FiniteElement *finiteElement = new FiniteElement(supportPoints, referenceElement);
@@ -292,44 +334,44 @@ int main(int argc, char *argv[]) {
   delete quadratureRule;
   delete finiteElement;
   delete referenceElement;
+  }
 
+  { /** test point operations */
   Point *pp;
   pp = new Point(-3.0);
   std::cout<<*pp<<pp->x<<2.0*(*pp)<<*pp/3.0<<*pp+(*pp)<<*pp-(*pp)<<std::endl;
+  delete pp;
+  }
 
-
-  QuadratureRule *qr;
-  BasisFunctions *bf;
-
-  {
+  { /** test basis functions */
+  // create a basis of shape functions
   std::vector<Point> dummySupportPoints;
   dummySupportPoints.push_back(Point(-1.0));
   dummySupportPoints.push_back(Point(1.0));
-  //qr = new GaussianTwoPoints;
-  //bf = new PiecewiseLinear(dummySupportPoints);
-  qr = new GaussianThreePoints;
-  bf = new PiecewiseQuadratic(dummySupportPoints);
-  unsigned int n_qp = qr->getNumberOfQuadraturePoints();
-  std::vector<Point> qp = qr->getQuadraturePoints();
+  BasisFunctions *bf = new PiecewiseLinear(dummySupportPoints);
+  //BasisFunctions *bf = new PiecewiseQuadratic(dummySupportPoints);
 
-  std::cout<<"points regulary spaced\n";
+  // fill vector of points
+  std::vector<Point> p;
+  const unsigned int np = 51;
+  const unsigned int ndof = bf->getNumberOfNodes();
+  for (unsigned int ip = 0; ip < np; ++ip)
+    p.push_back(Point(-1.0+ip*2.0/double(np-1)));
 
-  qp.clear();
-  n_qp = 51;
-  for (unsigned int i = 0; i < n_qp; ++i)
-    qp.push_back(Point(-1.0+i*2.0/double(n_qp-1)));
-  for (unsigned int i = 0; i < n_qp; ++i) {
-    std::cout<<"x="<<qp[i].x<<"  ";
-    for (unsigned int j = 0; j < bf->getNumberOfNodes(); ++j) {
-      std::cout<<"phi_"<<j<<"="<<bf->getVal(j, qp[j])<<"  ";
+  // evaluate shape functions at points
+  for (unsigned int ip = 0; ip < np; ++ip) {
+    std::cout<<"x="<<p[ip].x<<"  ";
+    for (unsigned int idof = 0; idof < ndof; ++idof) {
+      std::cout<<"phi_"<<idof<<"="<<bf->getVal(idof, p[ip])<<"  ";
+    }
+    for (unsigned int idof = 0; idof < ndof; ++idof) {
+      std::cout<<"DphiDx_"<<idof<<"="<<bf->getDx(idof, p[ip])<<"  ";
     }
     std::cout<<"\n";
   }
 
   delete bf;
-  delete qr;
   }
   
-
   return 0;
 }
