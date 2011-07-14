@@ -207,11 +207,11 @@ public:
     g.x = sp[0].x + (sp[1].x - sp[0].x) * (l.x - ref_sp[0].x) / (ref_sp[1].x - ref_sp[0].x);
     return g;
   }
+  double getDeterminantOfJacobian() const { std::vector<Point> ref_sp = re->getSupportPoints(); return (sp[1].x - sp[0].x) / (ref_sp[1].x - ref_sp[0].x); }
   double getValByLocal(unsigned int idof, Point l) const { return re->getVal(idof, l); }
   double getValByGlobal(unsigned int idof, Point g) const { Point l = mapGlobalToLocal(g); return re->getVal(idof, l); }
   double getDxByLocal(unsigned int idof, Point l) const { return re->getDx(idof, l); }
   double getDxByGlobal(unsigned int idof, Point g) const { Point l = mapGlobalToLocal(g); return re->getDx(idof, l); }
-
   unsigned int getNumberOfNodes() const { return re->getNumberOfNodes(); }
 
 protected:
@@ -225,7 +225,9 @@ class FEValues {
 public:
   FEValues(FiniteElement *e, QuadratureRule *r, UpdateFlags f) : fe(e), qr(r), uf(f) { } 
 
-  void reinit() {
+  void reinit(FiniteElement *e) {
+    fe = e;
+    DeterminantOfJacobian = fe->getDeterminantOfJacobian();
     Weights = qr->getWeights();
     const unsigned int nqp = qr->getNumberOfQuadraturePoints();
     const unsigned int ndof = fe->getNumberOfNodes();
@@ -270,6 +272,24 @@ int main(int argc, char *argv[]) {
   std::vector<Point> supportPoints;  supportPoints.push_back(Point(0.0));  supportPoints.push_back(Point(4.0)); 
   FiniteElement *finiteElement = new FiniteElement(supportPoints, referenceElement);
   std::cout<<finiteElement->mapGlobalToLocal(Point(1.0))<<finiteElement->mapLocalToGlobal(Point(0.0))<<std::endl;
+  QuadratureRule *quadratureRule = new GaussianTwoPoints;
+  UpdateFlags dummyUpdateFlags;
+  FEValues *feValues = new FEValues(finiteElement, quadratureRule, dummyUpdateFlags);
+  feValues->reinit(finiteElement);
+  const unsigned int ndof = finiteElement->getNumberOfNodes();
+  const unsigned int nqp = quadratureRule->getNumberOfQuadraturePoints();
+  for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
+    std::cout<<"qp="<<feValues->getQuadraturePoints()[iqp]<<"  "
+             <<"JxW="<<feValues->getDeterminantOfJacobianTimesWeight(iqp)<<"  ";
+    for (unsigned int idof = 0; idof < ndof; ++idof) {
+      std::cout<<"phi_"<<idof<<"="<<feValues->getShapeValue(idof, iqp)<<"  "
+               <<"DphiDx_"<<idof<<"="<<feValues->getShapeDx(idof, iqp)<<"  ";
+    }
+    std::cout<<"\n";
+  }
+
+  delete feValues;        
+  delete quadratureRule;
   delete finiteElement;
   delete referenceElement;
 
