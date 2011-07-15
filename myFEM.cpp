@@ -486,10 +486,66 @@ int main(int argc, char *argv[]) {
     foutMatrix<<"\n";
     foutRHS<<std::setprecision(5)<<globalRHS[idof]<<"\n";
   } // end for idof
-    foutMatrix.close();
-    foutRHS.close();
+  foutMatrix.close();
+  foutRHS.close();
   std::cout<<"#### END ######\n";
 
+#ifdef EBILE
+  std::cout<<"tu te crois malin hein? gros ebile :D\n";
+#endif
+
+  enum UMFPACK_STATUS_DUMMY_ENUM { TRIPLET_TO_COL, SYMBOLIC, NUMERIC, SOLVE, UMFPACK_STATUS_DUMMY_ENUM_SIZE };
+  int status[UMFPACK_STATUS_DUMMY_ENUM_SIZE];
+
+  double Info[UMFPACK_INFO];
+  double Control[UMFPACK_CONTROL];
+  void *Symbolic;
+  void *Numeric;
+
+  std::vector<double> iRowTMP, jColTMP, ijValTMP;
+  int nRow = dofCounter;
+  int nCol = dofCounter;
+  double EPSILON = 1.0e-10;
+  for (unsigned int i = 0; i < nRow; ++i) {
+    for (unsigned int j = 0; j < nCol; ++j) {
+      if (fabs(globalMatrix[i][j]) > EPSILON) { 
+        //static int k = 0;
+        //std::cout<<++k<<" -> i="<<i<<" j="<<j<<" val="<<globalMatrix[i][j]<<std::endl;
+        iRowTMP.push_back(i);
+        jColTMP.push_back(j);
+        ijValTMP.push_back(globalMatrix[i][j]);
+      } // end if nonzero val in global matrix
+    } // end for j
+  } // end for i
+  int nNZ = ijValTMP.size();
+  std::cout<<"number of nonzero values = "<<nNZ<<"\n";
+  std::cout<<std::endl;
+  int iRowCOO[nNZ];
+  int jColCOO[nNZ];
+  double ijValCOO[nNZ];
+  std::copy(iRowTMP.begin(), iRowTMP.end(), iRowCOO);
+  std::copy(jColTMP.begin(), jColTMP.end(), jColCOO);
+  std::copy(ijValTMP.begin(), ijValTMP.end(), ijValCOO);
+
+  double solVec[dofCounter];
+  double rhsVec[dofCounter];
+  std::copy(globalRHS.begin(), globalRHS.end(), rhsVec);
+
+  int pColCC[nCol+1];
+  int iRowCC[nNZ];
+  double iValCC[nNZ];
+  int Map[nNZ];
+  int sys = UMFPACK_A;
+
+  status[TRIPLET_TO_COL] = umfpack_di_triplet_to_col(nRow, nCol, nNZ, iRowCOO, jColCOO, ijValCOO, pColCC, iRowCC, iValCC, Map);
+  status[SYMBOLIC] = umfpack_di_symbolic(nRow, nCol, pColCC, iRowCC, iValCC, &Symbolic, Control, Info);
+  status[NUMERIC] = umfpack_di_numeric(pColCC, iRowCC, iValCC, Symbolic, &Numeric, Control, Info);
+  status[SOLVE] = umfpack_di_solve(sys, pColCC, iRowCC, iValCC, solVec, rhsVec, Numeric, Control, Info);
+
+  std::cout<<"solution\n";
+  for (unsigned int idof = 0; idof < dofCounter; ++idof) {
+    std::cout<<std::setw(7)<<std::setprecision(3)<<solVec[idof]<<"\n";
+  } // end for idof
   }
 
 
