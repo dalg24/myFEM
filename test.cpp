@@ -185,7 +185,7 @@ public:
   std::vector<Point> getSupportPoints() const { return sp; }
   double getVal(unsigned int idof, Point p) const { return bf->getVal(idof, p); }
   double getDx(unsigned int idof, Point p) const { return bf->getDx(idof, p); }
-  std::string getTypeOfBasisFunction() const { return bf->getType(); }
+  std::string getTypeOfBasisFunctions() const { return bf->getType(); }
 
 protected:
   std::vector<Point> sp; 
@@ -303,10 +303,15 @@ double f(Point p) { return f(p.x); };
 int main(int argc, char *argv[]) {
 
   { /** nouveau test */
+  std::cout<<"#### BEGIN ######\n";
   unsigned int nel = 10;
+  std::cout<<"number of elements = "<<nel<<"\n";
+
   // construct nel elements
   ReferenceElement referenceElement("PiecewiseLinear");
+  std::cout<<"basis functions = "<<referenceElement.getTypeOfBasisFunctions()<<"\n";
   //ReferenceElement referenceElement("PiecewiseQuadratic");
+
   std::vector<FiniteElement> finiteElements;
   Point startPoint(0.0); Point endPoint(1.0);
   for (unsigned int iel; iel < nel; ++iel) {
@@ -317,7 +322,7 @@ int main(int argc, char *argv[]) {
     finiteElements.push_back(FiniteElement(supportPoints, &referenceElement));
   } // end for iel
 
-  // distribute the Degrees Of Freedoms
+  // distribute the Degrees Of Freedoms (DOF)
   // TODO: need to come up with something better than this
   unsigned int dofCounter = 0;
   for (unsigned int iel; iel < nel; ++iel) {
@@ -326,31 +331,38 @@ int main(int argc, char *argv[]) {
   } // end for iel
   dofCounter++;
 
+  // create global matrix and global rhs
   std::vector<std::vector<double> > globalMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
   std::vector<double> globalRHS(dofCounter, 0.0);
 
   GaussianTwoPoints quadratureRule;
+  std::cout<<"quadrature rule = "<<quadratureRule.getType()<<"\n";
   UpdateFlags updateFlags;
 
   FEValues feValues(NULL, &quadratureRule, updateFlags); 
   for (unsigned int iel = 0; iel < nel; ++iel) {
+  std::cout<<"##########\n";
+    std::cout<<"element #"<<iel+1<<"\n";
+    // compute FE values for element iel
     feValues.reinit(&finiteElements[iel]);
 
+    // get quadrature points and print out to the screen
     std::vector<Point> quadraturePoints = feValues.getQuadraturePoints();
-
     const unsigned int nqp = quadraturePoints.size();
-    std::cout<<iel<<"  ";
+    std::cout<<"quadrature points\n";
     for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
-      std::cout<<"  "<<quadraturePoints[iqp]<<"  ";
+      std::cout<<iqp<<" = "<<quadraturePoints[iqp]<<"\n";
     } // end for iqp
-    std::cout<<"\n";
 
+    // get DOF map and print out to the screen
+    std::cout<<"DOF map\n";
     std::map<unsigned int, unsigned int> dofMap = finiteElements[iel].getDOFMap();
     const unsigned int ndof = finiteElements[iel].getNumberOfDOF();
-    /*for (unsigned int idof = 0; idof < ndof; ++idof) {
+    for (unsigned int idof = 0; idof < ndof; ++idof) {
       std::cout<<idof<<" -> "<<dofMap[idof]<<"\n";
-    } // end for idof*/
+    } // end for idof
 
+    // compute local matrix
     std::vector<std::vector<double> > localMatrix(ndof, std::vector<double>(ndof, 0.0));
     for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
       for (unsigned int idof = 0; idof < ndof; ++idof) {
@@ -358,16 +370,27 @@ int main(int argc, char *argv[]) {
           localMatrix[idof][jdof] += ( a(quadraturePoints[iqp]) * feValues.getShapeDx(idof, iqp) * feValues.getShapeDx(jdof, iqp)
                                        + q(quadraturePoints[iqp]) * feValues.getShapeValue(idof, iqp) * feValues.getShapeValue(jdof, iqp)
                                      ) * feValues.getDeterminantOfJacobianTimesWeight(iqp);
+          /*
+          std::cout<<"iqp="<<iqp<<quadraturePoints[iqp]<<"idof="<<idof<<"  jdof="<<jdof<<"  "
+            <<"a="<<a(quadraturePoints[iqp])<<"  "
+            <<"q="<<q(quadraturePoints[iqp])<<"  "
+            <<"phi_"<<idof<<"="<<feValues.getShapeValue(idof, iqp)<<"  "
+            <<"phi_"<<jdof<<"="<<feValues.getShapeValue(jdof, iqp)<<"  "
+            <<"DphiDx_"<<idof<<"="<<feValues.getShapeDx(idof, iqp)<<"  "
+            <<"DphiDx_"<<jdof<<"="<<feValues.getShapeDx(jdof, iqp)<<"  "
+            <<"JxW="<<feValues.getDeterminantOfJacobianTimesWeight(iqp)<<"\n";
+          */
         } // end for jdof
       } // end for idof
     } //end for iqp
 
+    // compute local rhs
     std::vector<double> localRHS(ndof, 0.0);
     for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
       for (unsigned int idof = 0; idof < ndof; ++idof) {
         localRHS[idof] += f(quadraturePoints[iqp]) * feValues.getShapeValue(idof, iqp) * feValues.getDeterminantOfJacobianTimesWeight(iqp);
         /*
-        std::cout<<iqp<<quadraturePoints[iqp]<<idof<<"  "
+        std::cout<<"iqp="<<iqp<<quadraturePoints[iqp]<<"idof="<<idof<<"  "
           <<"f="<<f(quadraturePoints[iqp])<<"  "
           <<"phi_"<<idof<<"="<<feValues.getShapeValue(idof, iqp)<<"  "
           <<"JxW="<<feValues.getDeterminantOfJacobianTimesWeight(iqp)<<"\n";
@@ -375,19 +398,24 @@ int main(int argc, char *argv[]) {
       } // end for idof
     } //end for iqp
 
+    // print out local matrix and local rhs and distribute to global
+    std::cout<<"local matrix and local rhs\n";
     for (unsigned int idof = 0; idof < ndof; ++idof) {
       for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
         globalMatrix[dofMap[idof]][dofMap[jdof]] += localMatrix[idof][jdof];
-        std::cout<<localMatrix[idof][jdof]<<"  ";
+        std::cout<<std::setw(7)<<std::setprecision(3)<<localMatrix[idof][jdof]<<"  ";
       } // end for jdof
       globalRHS[dofMap[idof]] += localRHS[idof];
-      std::cout<<"||  "<<localRHS[idof]<<"\n";
+      std::cout<<"||  "<<std::setprecision(3)<<localRHS[idof]<<"\n";
     } // end for idof
 
   } // end for iel
 
-  std::cout<<dofCounter<<"\n";
+  std::cout<<"##########\n";
+  std::cout<<"global number of DOF = "<<dofCounter<<"\n";
 
+  // print out global matrix and global rhs
+  std::cout<<"global matrix and global rhs\n";
   std::fstream foutMatrix;
   std::fstream foutRHS;
   foutMatrix.open("matrix.dat", std::fstream::out);
@@ -403,11 +431,12 @@ int main(int argc, char *argv[]) {
   } // end for idof
     foutMatrix.close();
     foutRHS.close();
+  std::cout<<"#### END ######\n";
 
-  std::cout<<"just checking\n";
   }
 
 
+  if (false)
   { /** test finite element */
   ReferenceElement *referenceElement = new ReferenceElement;
   std::vector<Point> supportPoints;  supportPoints.push_back(Point(0.0));  supportPoints.push_back(Point(4.0)); 
@@ -435,6 +464,7 @@ int main(int argc, char *argv[]) {
   delete referenceElement;
   }
 
+  if (false)
   { /** test point operations */
   Point *pp;
   pp = new Point(-3.0);
@@ -442,6 +472,7 @@ int main(int argc, char *argv[]) {
   delete pp;
   }
 
+  if (false)
   { /** test basis functions */
   // create a basis of shape functions
   std::vector<Point> dummySupportPoints;
