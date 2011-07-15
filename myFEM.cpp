@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cassert>
 #include <cmath>
+#include "umfpack.h"
 
 ////////////////////////// POINT //////////////////////////////////////
 class Point { 
@@ -281,6 +282,7 @@ public:
     }
     return qps;
   }
+  FiniteElement* getFiniteElement() const { return fe; }
 
 protected:
   std::vector<double> Weights;
@@ -302,6 +304,96 @@ double a(Point p) { return a(p.x); };
 double q(Point p) { return q(p.x); };
 double f(Point p) { return f(p.x); };
 
+std::vector<std::vector<double> > computeLocalMatrix(FEValues *feValues, 
+    bool verbose = false, 
+    std::ostream& os = std::cout,
+    unsigned int debugLevel = 1) {
+  /** get quadrature points */
+  std::vector<Point> quadraturePoints = feValues->getQuadraturePoints();
+  const unsigned int nqp = quadraturePoints.size();
+  if ((verbose)
+      && (debugLevel > 3)) {
+    os<<"quadrature points\n";
+    for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
+      os<<iqp<<" = "<<quadraturePoints[iqp]<<"\n";
+    } // end for iqp
+  } // end if verbose
+
+  /** compute local matrix */
+  const unsigned int ndof = feValues->getFiniteElement()->getNumberOfDOF();
+  std::vector<std::vector<double> > localMatrix(ndof, std::vector<double>(ndof, 0.0));
+  for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
+    for (unsigned int idof = 0; idof < ndof; ++idof) {
+      for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
+        localMatrix[idof][jdof] += ( a(quadraturePoints[iqp]) * feValues->getShapeDx(idof, iqp) * feValues->getShapeDx(jdof, iqp)
+                                     + q(quadraturePoints[iqp]) * feValues->getShapeValue(idof, iqp) * feValues->getShapeValue(jdof, iqp)
+                                   ) * feValues->getDeterminantOfJacobianTimesWeight(iqp);
+        if ((verbose)
+            && (debugLevel > 6)) {
+          os<<"iqp="<<iqp<<quadraturePoints[iqp]<<"idof="<<idof<<"  jdof="<<jdof<<"  "
+            <<"a="<<a(quadraturePoints[iqp])<<"  "
+            <<"q="<<q(quadraturePoints[iqp])<<"  "
+            <<"phi_"<<idof<<"="<<feValues->getShapeValue(idof, iqp)<<"  "
+            <<"phi_"<<jdof<<"="<<feValues->getShapeValue(jdof, iqp)<<"  "
+            <<"DphiDx_"<<idof<<"="<<feValues->getShapeDx(idof, iqp)<<"  "
+            <<"DphiDx_"<<jdof<<"="<<feValues->getShapeDx(jdof, iqp)<<"  "
+            <<"JxW="<<feValues->getDeterminantOfJacobianTimesWeight(iqp)<<"\n";
+        } // end if verbose
+      } // end for jdof
+    } // end for idof
+  } //end for iqp           
+
+  if (verbose) {
+    for (unsigned int idof = 0; idof < ndof; ++idof) {
+      for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
+        os<<std::setw(7)<<std::setprecision(3)<<localMatrix[idof][jdof]<<"  ";
+      } // end for jdof
+      std::cout<<"\n";
+    } // end for idof
+  } // end if verbose
+
+  return localMatrix;
+}
+
+std::vector<double> computeLocalRHS(FEValues *feValues, 
+    bool verbose = false, 
+    std::ostream& os = std::cout,
+    unsigned int debugLevel = 1) {
+  /** get quadrature points */
+  std::vector<Point> quadraturePoints = feValues->getQuadraturePoints();
+  const unsigned int nqp = quadraturePoints.size();
+  if ((verbose)
+      && (debugLevel > 3)) {
+    os<<"quadrature points\n";
+    for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
+      os<<iqp<<" = "<<quadraturePoints[iqp]<<"\n";
+    } // end for iqp
+  } // end if verbose
+
+  /** compute local RHS */
+  const unsigned int ndof = feValues->getFiniteElement()->getNumberOfDOF();
+  std::vector<double> localRHS(ndof, 0.0);
+  for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
+    for (unsigned int idof = 0; idof < ndof; ++idof) {
+      localRHS[idof] += f(quadraturePoints[iqp]) * feValues->getShapeValue(idof, iqp) * feValues->getDeterminantOfJacobianTimesWeight(iqp);
+      if ((verbose)
+          && (debugLevel > 6)) {
+        os<<"iqp="<<iqp<<quadraturePoints[iqp]<<"idof="<<idof<<"  "
+          <<"f="<<f(quadraturePoints[iqp])<<"  "
+          <<"phi_"<<idof<<"="<<feValues->getShapeValue(idof, iqp)<<"  "
+          <<"JxW="<<feValues->getDeterminantOfJacobianTimesWeight(iqp)<<"\n";
+      } //end if verbose
+    } // end for idof
+  } //end for iqp
+  if (verbose) {
+    for (unsigned int idof = 0; idof < ndof; ++idof) {
+      os<<std::setprecision(3)<<localRHS[idof]<<"\n";
+    } // end for idof
+  } //end if verbose
+
+  return localRHS;
+}
+
 int main(int argc, char *argv[]) {
 
   { /** nouveau test */
@@ -311,8 +403,8 @@ int main(int argc, char *argv[]) {
 
   // construct nel elements
   ReferenceElement referenceElement("PiecewiseLinear");
-  std::cout<<"basis functions = "<<referenceElement.getTypeOfBasisFunctions()<<"\n";
   //ReferenceElement referenceElement("PiecewiseQuadratic");
+  std::cout<<"basis functions = "<<referenceElement.getTypeOfBasisFunctions()<<"\n";
 
   std::vector<FiniteElement> finiteElements;
   Point startPoint(0.0); Point endPoint(1.0);
@@ -338,6 +430,7 @@ int main(int argc, char *argv[]) {
   std::vector<double> globalRHS(dofCounter, 0.0);
 
   GaussianTwoPoints quadratureRule;
+  //GaussianThreePoints quadratureRule;
   std::cout<<"quadrature rule = "<<quadratureRule.getType()<<"\n";
   UpdateFlags updateFlags;
 
@@ -348,57 +441,19 @@ int main(int argc, char *argv[]) {
     // compute FE values for element iel
     feValues.reinit(&finiteElements[iel]);
 
-    // get quadrature points and print out to the screen
-    std::vector<Point> quadraturePoints = feValues.getQuadraturePoints();
-    const unsigned int nqp = quadraturePoints.size();
-    std::cout<<"quadrature points\n";
-    for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
-      std::cout<<iqp<<" = "<<quadraturePoints[iqp]<<"\n";
-    } // end for iqp
-
-    // get DOF map and print out to the screen
-    std::cout<<"DOF map\n";
-    std::map<unsigned int, unsigned int> dofMap = finiteElements[iel].getDOFMap();
-    const unsigned int ndof = finiteElements[iel].getNumberOfDOF();
-    for (unsigned int idof = 0; idof < ndof; ++idof) {
-      std::cout<<idof<<" -> "<<dofMap[idof]<<"\n";
-    } // end for idof
-
     // compute local matrix
-    std::vector<std::vector<double> > localMatrix(ndof, std::vector<double>(ndof, 0.0));
-    for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
-      for (unsigned int idof = 0; idof < ndof; ++idof) {
-        for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
-          localMatrix[idof][jdof] += ( a(quadraturePoints[iqp]) * feValues.getShapeDx(idof, iqp) * feValues.getShapeDx(jdof, iqp)
-                                       + q(quadraturePoints[iqp]) * feValues.getShapeValue(idof, iqp) * feValues.getShapeValue(jdof, iqp)
-                                     ) * feValues.getDeterminantOfJacobianTimesWeight(iqp);
-          
-          std::cout<<"iqp="<<iqp<<quadraturePoints[iqp]<<"idof="<<idof<<"  jdof="<<jdof<<"  "
-            <<"a="<<a(quadraturePoints[iqp])<<"  "
-            <<"q="<<q(quadraturePoints[iqp])<<"  "
-            <<"phi_"<<idof<<"="<<feValues.getShapeValue(idof, iqp)<<"  "
-            <<"phi_"<<jdof<<"="<<feValues.getShapeValue(jdof, iqp)<<"  "
-            <<"DphiDx_"<<idof<<"="<<feValues.getShapeDx(idof, iqp)<<"  "
-            <<"DphiDx_"<<jdof<<"="<<feValues.getShapeDx(jdof, iqp)<<"  "
-            <<"JxW="<<feValues.getDeterminantOfJacobianTimesWeight(iqp)<<"\n";
-          
-        } // end for jdof
-      } // end for idof
-    } //end for iqp
+    std::vector<std::vector<double> > localMatrix = computeLocalMatrix(&feValues, false, std::cout, 5);
 
     // compute local rhs
-    std::vector<double> localRHS(ndof, 0.0);
-    for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
-      for (unsigned int idof = 0; idof < ndof; ++idof) {
-        localRHS[idof] += f(quadraturePoints[iqp]) * feValues.getShapeValue(idof, iqp) * feValues.getDeterminantOfJacobianTimesWeight(iqp);
-        /*
-        std::cout<<"iqp="<<iqp<<quadraturePoints[iqp]<<"idof="<<idof<<"  "
-          <<"f="<<f(quadraturePoints[iqp])<<"  "
-          <<"phi_"<<idof<<"="<<feValues.getShapeValue(idof, iqp)<<"  "
-          <<"JxW="<<feValues.getDeterminantOfJacobianTimesWeight(iqp)<<"\n";
-        */
-      } // end for idof
-    } //end for iqp
+    std::vector<double> localRHS = computeLocalRHS(&feValues, false, std::cout, 5);
+
+  /** get DOF map */
+  std::map<unsigned int, unsigned int> dofMap = feValues.getFiniteElement()->getDOFMap();
+  const unsigned int ndof = feValues.getFiniteElement()->getNumberOfDOF();
+  std::cout<<"DOF map\n";
+  for (unsigned int idof = 0; idof < ndof; ++idof) {
+    std::cout<<idof<<" -> "<<dofMap[idof]<<"\n";
+  } // end for idof
 
     // print out local matrix and local rhs and distribute to global
     std::cout<<"local matrix and local rhs\n";
