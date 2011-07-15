@@ -229,7 +229,7 @@ public:
     g.x = sp[0].x + (sp[1].x - sp[0].x) * (l.x - ref_sp[0].x) / (ref_sp[1].x - ref_sp[0].x);
     return g;
   }
-  double getDeterminantOfJacobian() const { std::vector<Point> ref_sp = re->getSupportPoints(); return (sp[1].x - sp[0].x) / (ref_sp[1].x - ref_sp[0].x); }
+  double getJacobian() const { std::vector<Point> ref_sp = re->getSupportPoints(); return (sp[1].x - sp[0].x) / (ref_sp[1].x - ref_sp[0].x); }
   double getValByLocal(unsigned int idof, Point l) const { return re->getVal(idof, l); }
   double getValByGlobal(unsigned int idof, Point g) const { Point l = mapGlobal2Local(g); return re->getVal(idof, l); }
   double getDxByLocal(unsigned int idof, Point l) const { return re->getDx(idof, l); }
@@ -253,7 +253,8 @@ public:
 
   void reinit(FiniteElement *e) {
     fe = e;
-    DeterminantOfJacobian = fe->getDeterminantOfJacobian();
+    DeterminantOfJacobian = fabs(fe->getJacobian());
+    InverseJacobian = 1.0 / (fe->getJacobian());
     Weights = qr->getWeights();
     const unsigned int nqp = qr->getNumberOfQuadraturePoints();
     const unsigned int ndof = fe->getNumberOfNodes();
@@ -271,7 +272,7 @@ public:
 
   double getDeterminantOfJacobianTimesWeight(unsigned int iqp) const { return Weights[iqp]*DeterminantOfJacobian; }
   double getShapeValue(unsigned int idof, unsigned int iqp) const { return ShapeValues[idof][iqp]; }
-  double getShapeDx(unsigned int idof, unsigned int iqp) const { return ShapeDx[idof][iqp]; }
+  double getShapeDx(unsigned int idof, unsigned int iqp) const { return InverseJacobian * ShapeDx[idof][iqp]; }
   std::vector<Point> getQuadraturePoints() const {
     std::vector<Point> qps;
     const unsigned int nqp = qr->getNumberOfQuadraturePoints();
@@ -284,6 +285,7 @@ public:
 protected:
   std::vector<double> Weights;
   double DeterminantOfJacobian;
+  double InverseJacobian;
   std::vector<std::vector<double> > ShapeValues;
   std::vector<std::vector<double> > ShapeDx;
 
@@ -342,7 +344,7 @@ int main(int argc, char *argv[]) {
   FEValues feValues(NULL, &quadratureRule, updateFlags); 
   for (unsigned int iel = 0; iel < nel; ++iel) {
   std::cout<<"##########\n";
-    std::cout<<"element #"<<iel+1<<"\n";
+    std::cout<<"element #"<<iel<<"\n";
     // compute FE values for element iel
     feValues.reinit(&finiteElements[iel]);
 
@@ -370,7 +372,7 @@ int main(int argc, char *argv[]) {
           localMatrix[idof][jdof] += ( a(quadraturePoints[iqp]) * feValues.getShapeDx(idof, iqp) * feValues.getShapeDx(jdof, iqp)
                                        + q(quadraturePoints[iqp]) * feValues.getShapeValue(idof, iqp) * feValues.getShapeValue(jdof, iqp)
                                      ) * feValues.getDeterminantOfJacobianTimesWeight(iqp);
-          /*
+          
           std::cout<<"iqp="<<iqp<<quadraturePoints[iqp]<<"idof="<<idof<<"  jdof="<<jdof<<"  "
             <<"a="<<a(quadraturePoints[iqp])<<"  "
             <<"q="<<q(quadraturePoints[iqp])<<"  "
@@ -379,7 +381,7 @@ int main(int argc, char *argv[]) {
             <<"DphiDx_"<<idof<<"="<<feValues.getShapeDx(idof, iqp)<<"  "
             <<"DphiDx_"<<jdof<<"="<<feValues.getShapeDx(jdof, iqp)<<"  "
             <<"JxW="<<feValues.getDeterminantOfJacobianTimesWeight(iqp)<<"\n";
-          */
+          
         } // end for jdof
       } // end for idof
     } //end for iqp
