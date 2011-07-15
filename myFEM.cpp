@@ -297,12 +297,14 @@ protected:
 }; // end class FEValues
 
 // solve -d/dx(a(x) d/dx(u)) + q(x) u(x) = f(x) for u(x) and x in (0,1)
-double a(double x) { return 1 + x; };
-double q(double x) { return x; };
-double f(double x) { return x*cos(M_PI*x) + M_PI*sin(M_PI*x) + M_PI*M_PI*(1+x)*cos(M_PI*x); };
-double a(Point p) { return a(p.x); };
-double q(Point p) { return q(p.x); };
-double f(Point p) { return f(p.x); };
+double a(double x) { return 1 + x; }
+double q(double x) { return x; }
+double f(double x) { return x*cos(M_PI*x) + M_PI*sin(M_PI*x) + M_PI*M_PI*(1+x)*cos(M_PI*x); }
+double u(double x) { return cos(M_PI*x); }
+double a(Point p) { return a(p.x); }
+double q(Point p) { return q(p.x); }
+double f(Point p) { return f(p.x); }
+double u(Point p) { return u(p.x); }
 
 std::vector<std::vector<double> > computeLocalMatrix(FEValues *feValues, 
     bool verbose = false, 
@@ -394,11 +396,49 @@ std::vector<double> computeLocalRHS(FEValues *feValues,
   return localRHS;
 }
 
+enum PRINT_t { BOTH_MATRIX_AND_VECTOR, MATRIX_ONLY, VECTOR_ONLY };
+void printMatrixAndVector(std::vector<std::vector<double> > Matrix,
+    std::vector<double> Vector,
+    PRINT_t what = BOTH_MATRIX_AND_VECTOR,
+    std::ostream& os = std::cout,
+    int setwVal = 7,
+    int setprecisionVal = 3) {
+  unsigned int ndof = 0;
+  if (what != MATRIX_ONLY) {
+    ndof = Vector.size();
+  } else {
+    ndof = Matrix.size();
+  }
+  assert(ndof != 0);
+  for (unsigned int idof = 0; idof < ndof; ++idof) {
+    if (what != VECTOR_ONLY) {
+      for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
+        os<<std::setw(setwVal)
+          <<std::setprecision(setprecisionVal)
+          <<Matrix[idof][jdof]<<"  ";
+      } // end for jdof
+    } //end if
+    if (what == BOTH_MATRIX_AND_VECTOR) {
+      os<<"||  ";
+    } // end if
+    if (what != MATRIX_ONLY) {
+      os<<std::setw(setwVal)
+        <<std::setprecision(setprecisionVal)
+        <<Vector[idof]<<"\n";
+    } else {
+      os<<"\n";
+    } // end if
+  } // end for idof
+}
+
 int main(int argc, char *argv[]) {
 
   { /** nouveau test */
   std::cout<<"#### BEGIN ######\n";
   unsigned int nel = 10;
+  if (argc > 1) {
+    nel = atoi(argv[1]);
+  }
   std::cout<<"number of elements = "<<nel<<"\n";
 
   // construct nel elements
@@ -456,15 +496,14 @@ int main(int argc, char *argv[]) {
   } // end for idof
 
     // print out local matrix and local rhs and distribute to global
-    std::cout<<"local matrix and local rhs\n";
     for (unsigned int idof = 0; idof < ndof; ++idof) {
       for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
         globalMatrix[dofMap[idof]][dofMap[jdof]] += localMatrix[idof][jdof];
-        std::cout<<std::setw(7)<<std::setprecision(3)<<localMatrix[idof][jdof]<<"  ";
       } // end for jdof
       globalRHS[dofMap[idof]] += localRHS[idof];
-      std::cout<<"||  "<<std::setprecision(3)<<localRHS[idof]<<"\n";
     } // end for idof
+    std::cout<<"local matrix and local rhs\n";
+    printMatrixAndVector(localMatrix, localRHS, BOTH_MATRIX_AND_VECTOR, std::cout);
 
   } // end for iel
 
@@ -472,28 +511,33 @@ int main(int argc, char *argv[]) {
   std::cout<<"global number of DOF = "<<dofCounter<<"\n";
 
   // print out global matrix and global rhs
-  std::cout<<"global matrix and global rhs\n";
+  //std::cout<<"global matrix and global rhs\n";
+  //printMatrixAndRHS(globalMatrix, globalRHS);
+
   std::fstream foutMatrix;
   std::fstream foutRHS;
   foutMatrix.open("matrix.dat", std::fstream::out);
   foutRHS.open("rhs.dat", std::fstream::out);
+  printMatrixAndVector(globalMatrix, std::vector<double>(), MATRIX_ONLY, foutMatrix, 9, 5);
+  printMatrixAndVector(std::vector<std::vector<double> >(), globalRHS, VECTOR_ONLY, foutRHS, 9, 5);
+  /*  
   for (unsigned int idof = 0; idof < dofCounter; ++idof) {
     for (unsigned int jdof = 0; jdof < dofCounter; ++jdof) {
-      std::cout<<std::setw(7)<<std::setprecision(3)<<globalMatrix[idof][jdof]<<"  ";
       foutMatrix<<std::setw(9)<<std::setprecision(5)<<globalMatrix[idof][jdof]<<"  ";
     } // end for jdof
-    std::cout<<"||  "<<std::setprecision(3)<<globalRHS[idof]<<"\n";
     foutMatrix<<"\n";
     foutRHS<<std::setprecision(5)<<globalRHS[idof]<<"\n";
   } // end for idof
+  */
   foutMatrix.close();
   foutRHS.close();
-  std::cout<<"#### END ######\n";
 
 #ifdef EBILE
   std::cout<<"tu te crois malin hein? gros ebile :D\n";
 #endif
 
+  std::cout<<"##########\n";
+  std::cout<<"solve using umfpack\n";
   enum UMFPACK_STATUS_DUMMY_ENUM { TRIPLET_TO_COL, SYMBOLIC, NUMERIC, SOLVE, UMFPACK_STATUS_DUMMY_ENUM_SIZE };
   int status[UMFPACK_STATUS_DUMMY_ENUM_SIZE];
 
@@ -543,9 +587,39 @@ int main(int argc, char *argv[]) {
   status[SOLVE] = umfpack_di_solve(sys, pColCC, iRowCC, iValCC, solVec, rhsVec, Numeric, Control, Info);
 
   std::cout<<"solution\n";
+  std::vector<double> solVecTMP(dofCounter);
+  std::copy(solVec, solVec + dofCounter, solVecTMP.begin());
+  printMatrixAndVector(std::vector<std::vector<double> >(), solVecTMP, VECTOR_ONLY, std::cout);
+  
+  /** compute exact error */
+  // TODO: come up with something better than this
+  std::vector<double> exactSolVec(dofCounter);
+  for (unsigned int iel; iel < nel; ++iel) {
+    std::vector<Point> supportPoints;
+    supportPoints.push_back(startPoint+double(iel)/double(nel)*(endPoint-startPoint));
+    supportPoints.push_back(startPoint+double(iel+1)/double(nel)*(endPoint-startPoint));
+    //std::cout<<iel<<"  "<<supportPoints[0]<<"  "<<supportPoints[1]<<"\n";
+    if (referenceElement.getTypeOfBasisFunctions() == "PiecewiseLinear") {
+      exactSolVec[iel] = u(supportPoints[0]);
+      exactSolVec[iel+1] = u(supportPoints[1]);
+    } else if (referenceElement.getTypeOfBasisFunctions() == "PiecewiseQuadratic") {
+      exactSolVec[iel] = u(supportPoints[0]);
+      exactSolVec[iel+1] = u(supportPoints[1]);
+      exactSolVec[iel+2] = u((supportPoints[0] + supportPoints[1]) / 2.0);
+    } else {
+      std::cerr<<"mais qu'est-ce que tu fais la?\n";
+      abort();
+    }
+  } // end for iel
+
+  std::vector<double> errVec;
+  std::cout<<"exact error\n";
   for (unsigned int idof = 0; idof < dofCounter; ++idof) {
-    std::cout<<std::setw(7)<<std::setprecision(3)<<solVec[idof]<<"\n";
+    errVec.push_back(solVec[idof] - exactSolVec[idof]);
   } // end for idof
+  printMatrixAndVector(std::vector<std::vector<double> >(), errVec, VECTOR_ONLY, std::cout);
+
+  std::cout<<"#### END ######\n";
   }
 
 
