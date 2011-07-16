@@ -194,7 +194,7 @@ public:
     } else if (idof == 1) {
       value = (nodes[2].x - p.x) * (nodes[0].x - p.x) / ((nodes[2].x - nodes[1].x) * (nodes[0].x - nodes[1].x)); 
     } else if (idof == 2) {
-      value = (nodes[0].x - p.x) * (nodes[1].x - p.x) / ((nodes[0].x - nodes[2].x) * (nodes[1].x - nodes[2].x)); 
+      value = 0.5*(nodes[0].x - p.x) * (nodes[1].x - p.x) / ((nodes[0].x - nodes[2].x) * (nodes[1].x - nodes[2].x)); 
     } else {
       std::cerr<<"aie"<<std::endl;
       abort();
@@ -210,7 +210,7 @@ public:
     } else if (idof == 1) {
       value = (2.0 * p.x - nodes[2].x - nodes[0].x) / ((nodes[2].x - nodes[1].x) * (nodes[0].x - nodes[1].x)); 
     } else if (idof == 2) {
-      value = (2.0 * p.x - nodes[0].x - nodes[1].x) / ((nodes[0].x - nodes[2].x) * (nodes[1].x - nodes[2].x)); 
+      value = 0.5*(2.0 * p.x - nodes[0].x - nodes[1].x) / ((nodes[0].x - nodes[2].x) * (nodes[1].x - nodes[2].x)); 
     } else {
       std::cerr<<"aie"<<std::endl;
       abort();
@@ -696,7 +696,7 @@ int main(int argc, char *argv[]) {
   // Create triangualtion embryo
   // TODO: move towards triangulation class
   Point startPoint(0.0); Point endPoint(1.0);
-  for (unsigned int iel; iel < nel; ++iel) {
+  for (unsigned int iel = 0; iel < nel; ++iel) {
     std::vector<Point> supportPoints;
     supportPoints.push_back(startPoint+double(iel)/double(nel)*(endPoint-startPoint));
     supportPoints.push_back(startPoint+double(iel+1)/double(nel)*(endPoint-startPoint));
@@ -707,7 +707,7 @@ int main(int argc, char *argv[]) {
   // Distribute the Degrees Of Freedoms (DOF)
   // TODO: need to come up with something better than this
   unsigned int dofCounter = 0;
-  for (unsigned int iel; iel < nel; ++iel) {
+  for (unsigned int iel = 0; iel < nel; ++iel) {
     finiteElements[iel]->setDOF(dofCounter);
     dofCounter--;
   } // end for iel
@@ -761,6 +761,10 @@ int main(int argc, char *argv[]) {
     // same thing for mass and stiffness
     distributeLocal2Global(feValues, localStiffnessMatrix, nullVector, StiffnessMatrix, nullVector, myFEM_MATRIX_ONLY);
     distributeLocal2Global(feValues, localMassMatrix, nullVector, MassMatrix, nullVector, myFEM_MATRIX_ONLY);
+    std::cout<<"local mass matrix\n";
+    printMatrixAndVector(localMassMatrix, nullVector, myFEM_MATRIX_ONLY, std::cout);
+    std::cout<<"local stiffness matrix\n";
+    printMatrixAndVector(localStiffnessMatrix, nullVector, myFEM_MATRIX_ONLY, std::cout);
 
   } // end for iel
   std::cout<<"#### END ASSEMBLY ROUTINE ######\n";
@@ -775,6 +779,8 @@ int main(int argc, char *argv[]) {
     std::cout<<"mass matrix\n";
     printMatrixAndVector(MassMatrix, nullVector, myFEM_MATRIX_ONLY, std::cout);
   }
+  //std::cout<<std::endl;
+  //abort();
 
   // Print matrix and RHS to files to check with matlab
   std::fstream foutMatrix;
@@ -797,6 +803,8 @@ int main(int argc, char *argv[]) {
   std::cout<<"#### POSTPROCESSING ######\n";
   // Compute L2 norm of the numerical solution
   std::cout<<"solution L2 Norm = "<<computeNorm(MassMatrix, solutionVector, myFEM_L2_NORM)<<"\n"; 
+  std::cout<<"solution\n";
+  printMatrixAndVector(nullMatrix, solutionVector, myFEM_VECTOR_ONLY);
   
   // Compute exact solution
   // TODO: come up with something better than this
@@ -889,17 +897,17 @@ int main(int argc, char *argv[]) {
   { /** test basis functions */
   // create a basis of shape functions
   std::vector<Point> dummySupportPoints;
-  dummySupportPoints.push_back(Point(-1.0));
-  dummySupportPoints.push_back(Point(1.0));
-  BasisFunctions *bf = new PiecewiseLinear(dummySupportPoints);
-  //BasisFunctions *bf = new PiecewiseQuadratic(dummySupportPoints);
+  dummySupportPoints.push_back(Point(0.0));
+  dummySupportPoints.push_back(Point(0.5));
+  //BasisFunctions *bf = new PiecewiseLinear(dummySupportPoints);
+  BasisFunctions *bf = new PiecewiseQuadratic(dummySupportPoints);
 
   // fill vector of points
   std::vector<Point> p;
   const unsigned int np = 51;
   const unsigned int ndof = bf->getNumberOfNodes();
   for (unsigned int ip = 0; ip < np; ++ip)
-    p.push_back(Point(-1.0+ip*2.0/double(np-1)));
+    p.push_back(dummySupportPoints[0]+ip/double(np-1)*(dummySupportPoints[1]-dummySupportPoints[0]));
 
   // evaluate shape functions at points
   for (unsigned int ip = 0; ip < np; ++ip) {
@@ -913,6 +921,9 @@ int main(int argc, char *argv[]) {
     std::cout<<"\n";
   }
 
+  std::vector<Point> nodes = bf->getNodes();
+  unsigned int n = bf->getNumberOfNodes();
+  for (unsigned int i = 0; i < n; ++i) std::cout<<i<<nodes[i]<<"\n"; 
   delete bf;
   }
   
