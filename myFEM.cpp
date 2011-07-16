@@ -515,21 +515,96 @@ void printMatrixAndVector(const std::vector<std::vector<double> >& Matrix,
   } // end for idof
 }
                     
+// TODO: take COOMatrix as input instead of vector of vector 
+const double myFEM_EPSILON = 1.0e-10;
+std::vector<double> solveMatrixTimesXEqualsRHS(const std::vector<std::vector<double> >& Matrix,
+    const std::vector<double>& RHS,
+    bool verbose = false,
+    std::ostream& os = std::cout,
+    DebugLevel_t debugLevel = myFEM_NO_DEBUG) {
+  // Get nRow and nCol
+  const unsigned int ndof = RHS.size();
+  int nRow = ndof;
+  int nCol = ndof;
+  if (debugLevel != myFEM_NO_DEBUG) {
+    assert(Matrix.size() == ndof);
+    if (debugLevel == myFEM_MAX_DEBUG) {
+      for (unsigned int idof = 0; idof < ndof; ++idof) {
+        assert(Matrix[idof].size() == ndof);
+      } // end for idof
+    } // enf if debugLevel hardcore
+  } // end if debugLevel not zero
+                      
+  // TODO: get iRow, jCol, and ijVal directly from COOMatrix
+  std::vector<double> iRowTMP, jColTMP, ijValTMP;
+  // Fill iRow, jCol, and ijVal
+  for (unsigned int i = 0; i < ndof; ++i) {
+    for (unsigned int j = 0; j < ndof; ++j) {
+      if (fabs(Matrix[i][j]) > myFEM_EPSILON) { 
+        //static int k = 0;
+        //std::cout<<++k<<" -> i="<<i<<" j="<<j<<" val="<<globalMatrix[i][j]<<std::endl;
+        iRowTMP.push_back(i);
+        jColTMP.push_back(j);
+        ijValTMP.push_back(Matrix[i][j]);
+      } // end if nonzero val in global matrix
+    } // end for j
+  } // end for i
+  // Compute nNZ
+  int nNZ = ijValTMP.size();
+  std::cout<<"number of nonzero values = "<<nNZ<<"\n";
+  // Turn vectors into arrays...
+  int iRowCOO[nNZ];
+  int jColCOO[nNZ];
+  double ijValCOO[nNZ];
+  std::copy(iRowTMP.begin(), iRowTMP.end(), iRowCOO);
+  std::copy(jColTMP.begin(), jColTMP.end(), jColCOO);
+  std::copy(ijValTMP.begin(), ijValTMP.end(), ijValCOO);
+
+  double XArray[ndof];
+  double RHSArray[ndof];
+  std::copy(RHS.begin(), RHS.end(), RHSArray);
+
+  int pColCC[nCol+1];
+  int iRowCC[nNZ];
+  double iValCC[nNZ];
+  int Map[nNZ];
+  int sys = UMFPACK_A;
+
+  // TODO: print some info if verbose is true
+  enum UMFPACK_STATUS_DUMMY_ENUM { TRIPLET_TO_COL, SYMBOLIC, NUMERIC, SOLVE, UMFPACK_STATUS_DUMMY_ENUM_SIZE };
+  int status[UMFPACK_STATUS_DUMMY_ENUM_SIZE];
+
+  double Info[UMFPACK_INFO];
+  double Control[UMFPACK_CONTROL];
+  void *Symbolic;
+  void *Numeric;
+
+  status[TRIPLET_TO_COL] = umfpack_di_triplet_to_col(nRow, nCol, nNZ, iRowCOO, jColCOO, ijValCOO, pColCC, iRowCC, iValCC, Map);
+  status[SYMBOLIC] = umfpack_di_symbolic(nRow, nCol, pColCC, iRowCC, iValCC, &Symbolic, Control, Info);
+  status[NUMERIC] = umfpack_di_numeric(pColCC, iRowCC, iValCC, Symbolic, &Numeric, Control, Info);
+  status[SOLVE] = umfpack_di_solve(sys, pColCC, iRowCC, iValCC, XArray, RHSArray, Numeric, Control, Info);
+
+  std::vector<double> XVector(ndof);
+  std::copy(XArray, XArray + ndof, XVector.begin());
+
+  return XVector;
+}
+
 // TODO: replace prefix myFEM_ by namespace
-enum Norm_t { myFEM_L1, myFEM_L2, myFEM_H1 };
+enum Norm_t { myFEM_L1_NORM, myFEM_L2_NORM, myFEM_H1_NORM };
 double computeNorm(const std::vector<std::vector<double> >& MassMatrix,
     const std::vector<double>& Vector,
-    Norm_t normType = myFEM_L2,
+    Norm_t normType = myFEM_L2_NORM,
     const std::vector<std::vector<double> >& StiffnessMatrix = std::vector<std::vector<double> >()) {
   double Norm = 0.0;
   unsigned int ndof = Vector.size();
   for (unsigned int idof = 0; idof < ndof; ++idof) {
     for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
-      if (normType == myFEM_L1) {
+      if (normType == myFEM_L1_NORM) {
         Norm += MassMatrix[idof][jdof] * fabs(Vector[jdof]);
       } else {
         Norm += MassMatrix[idof][jdof] * Vector[jdof] * Vector[jdof];
-        if (normType == myFEM_H1) {
+        if (normType == myFEM_H1_NORM) {
           Norm += StiffnessMatrix[idof][jdof] * Vector[jdof] * Vector[jdof];
         } // end if H1
       } // end if not L1
@@ -610,9 +685,11 @@ int main(int argc, char *argv[]) {
 
   // create global matrix and global rhs
   std::vector<std::vector<double> > globalMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
-  std::vector<std::vector<double> > gStiffnessMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
-  std::vector<std::vector<double> > gMassMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
   std::vector<double> globalRHS(dofCounter, 0.0);
+  // create mass and stiffness matrix
+  std::vector<std::vector<double> > StiffnessMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
+  std::vector<std::vector<double> > MassMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
+  // create null vector and null matrix
   std::vector<std::vector<double> > nullMatrix;
   std::vector<double> nullVector;
 
@@ -639,45 +716,35 @@ int main(int argc, char *argv[]) {
 
     // compute local matrix
     std::vector<std::vector<double> > localMatrix = computeLocalMatrix(&feValues, false, std::cout, 5);
-    std::vector<std::vector<double> > lStiffnessMatrix = computeLocalMatrix(&feValues, false, std::cout, 5, &aStiffness, &qStiffness);
-    std::vector<std::vector<double> > lMassMatrix = computeLocalMatrix(&feValues, false, std::cout, 5, &aMass, &aStiffness);
-
     // compute local rhs
     std::vector<double> localRHS = computeLocalRHS(&feValues, false, std::cout, 5);
-
-    /** get DOF map */
-    std::map<unsigned int, unsigned int> dofMap = feValues.getFiniteElement()->getDOFMap();
-    const unsigned int ndof = feValues.getFiniteElement()->getNumberOfDOF();
-    std::cout<<"DOF map\n";
-    for (unsigned int idof = 0; idof < ndof; ++idof) {
-      std::cout<<idof<<" -> "<<dofMap[idof]<<"\n";
-    } // end for idof
+    // compute local mass and stiffness matrices
+    std::vector<std::vector<double> > localStiffnessMatrix = computeLocalMatrix(&feValues, false, std::cout, 5, &aStiffness, &qStiffness);
+    std::vector<std::vector<double> > localMassMatrix = computeLocalMatrix(&feValues, false, std::cout, 5, &aMass, &aStiffness);
 
     // distribute local to global
     distributeLocal2Global(&feValues, localMatrix, localRHS, globalMatrix, globalRHS, myFEM_BOTH_MATRIX_AND_VECTOR, myFEM_MAX_DEBUG);
-    distributeLocal2Global(&feValues, lStiffnessMatrix, nullVector, gStiffnessMatrix, nullVector, myFEM_MATRIX_ONLY);
-    distributeLocal2Global(&feValues, lMassMatrix, nullVector, gMassMatrix, nullVector, myFEM_MATRIX_ONLY);
-    /*
-    for (unsigned int idof = 0; idof < ndof; ++idof) {
-      for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
-        globalMatrix[dofMap[idof]][dofMap[jdof]] += localMatrix[idof][jdof];
-        gStiffnessMatrix[dofMap[idof]][dofMap[jdof]] += lStiffnessMatrix[idof][jdof];
-        gMassMatrix[dofMap[idof]][dofMap[jdof]] += lMassMatrix[idof][jdof];
-      } // end for jdof
-      globalRHS[dofMap[idof]] += localRHS[idof];
-    } // end for idof
-    */
     std::cout<<"local matrix and local rhs\n";
     printMatrixAndVector(localMatrix, localRHS, myFEM_BOTH_MATRIX_AND_VECTOR, std::cout);
+    // same thing for mass and stiffness
+    distributeLocal2Global(&feValues, localStiffnessMatrix, nullVector, StiffnessMatrix, nullVector, myFEM_MATRIX_ONLY);
+    distributeLocal2Global(&feValues, localMassMatrix, nullVector, MassMatrix, nullVector, myFEM_MATRIX_ONLY);
 
   } // end for iel
 
   std::cout<<"##########\n";
   std::cout<<"global number of DOF = "<<dofCounter<<"\n";
 
-  // print out global matrix and global rhs
-  std::cout<<"global matrix and global rhs\n";
-  printMatrixAndVector(globalMatrix, globalRHS, myFEM_BOTH_MATRIX_AND_VECTOR, std::cout);
+  if (nel <= 10) {
+    // print out global matrix and global rhs
+    std::cout<<"global matrix and global rhs\n";
+    printMatrixAndVector(globalMatrix, globalRHS, myFEM_BOTH_MATRIX_AND_VECTOR, std::cout);
+    // same thing with mass and stiffness
+    std::cout<<"stiffness matrix\n";
+    printMatrixAndVector(StiffnessMatrix, nullVector, myFEM_MATRIX_ONLY, std::cout);
+    std::cout<<"mass matrix\n";
+    printMatrixAndVector(MassMatrix, nullVector, myFEM_MATRIX_ONLY, std::cout);
+  }
 
   // print matrix and RHS to files to check with matlab
   std::fstream foutMatrix;
@@ -689,10 +756,6 @@ int main(int argc, char *argv[]) {
   foutMatrix.close();
   foutRHS.close();
 
-  //std::cout<<"stiffness matrix\n";
-  //printMatrixAndVector(gStiffnessMatrix, nullVector, myFEM_MATRIX_ONLY, std::cout);
-  //std::cout<<"mass matrix\n";
-  //printMatrixAndVector(gMassMatrix, nullVector, myFEM_MATRIX_ONLY, std::cout);
 
 #ifdef EBILE
   std::cout<<"tu te crois malin hein? gros ebile :D\n";
@@ -700,93 +763,46 @@ int main(int argc, char *argv[]) {
 
   std::cout<<"##########\n";
   std::cout<<"solve using umfpack\n";
-  enum UMFPACK_STATUS_DUMMY_ENUM { TRIPLET_TO_COL, SYMBOLIC, NUMERIC, SOLVE, UMFPACK_STATUS_DUMMY_ENUM_SIZE };
-  int status[UMFPACK_STATUS_DUMMY_ENUM_SIZE];
+  std::vector<double> solutionVector = solveMatrixTimesXEqualsRHS(globalMatrix, globalRHS);
 
-  double Info[UMFPACK_INFO];
-  double Control[UMFPACK_CONTROL];
-  void *Symbolic;
-  void *Numeric;
-
-  std::vector<double> iRowTMP, jColTMP, ijValTMP;
-  int nRow = dofCounter;
-  int nCol = dofCounter;
-  double EPSILON = 1.0e-10;
-  for (unsigned int i = 0; i < nRow; ++i) {
-    for (unsigned int j = 0; j < nCol; ++j) {
-      if (fabs(globalMatrix[i][j]) > EPSILON) { 
-        //static int k = 0;
-        //std::cout<<++k<<" -> i="<<i<<" j="<<j<<" val="<<globalMatrix[i][j]<<std::endl;
-        iRowTMP.push_back(i);
-        jColTMP.push_back(j);
-        ijValTMP.push_back(globalMatrix[i][j]);
-      } // end if nonzero val in global matrix
-    } // end for j
-  } // end for i
-  int nNZ = ijValTMP.size();
-  std::cout<<"number of nonzero values = "<<nNZ<<"\n";
-  std::cout<<std::endl;
-  int iRowCOO[nNZ];
-  int jColCOO[nNZ];
-  double ijValCOO[nNZ];
-  std::copy(iRowTMP.begin(), iRowTMP.end(), iRowCOO);
-  std::copy(jColTMP.begin(), jColTMP.end(), jColCOO);
-  std::copy(ijValTMP.begin(), ijValTMP.end(), ijValCOO);
-
-  double solVec[dofCounter];
-  double rhsVec[dofCounter];
-  std::copy(globalRHS.begin(), globalRHS.end(), rhsVec);
-
-  int pColCC[nCol+1];
-  int iRowCC[nNZ];
-  double iValCC[nNZ];
-  int Map[nNZ];
-  int sys = UMFPACK_A;
-
-  status[TRIPLET_TO_COL] = umfpack_di_triplet_to_col(nRow, nCol, nNZ, iRowCOO, jColCOO, ijValCOO, pColCC, iRowCC, iValCC, Map);
-  status[SYMBOLIC] = umfpack_di_symbolic(nRow, nCol, pColCC, iRowCC, iValCC, &Symbolic, Control, Info);
-  status[NUMERIC] = umfpack_di_numeric(pColCC, iRowCC, iValCC, Symbolic, &Numeric, Control, Info);
-  status[SOLVE] = umfpack_di_solve(sys, pColCC, iRowCC, iValCC, solVec, rhsVec, Numeric, Control, Info);
-
-  std::vector<double> solVecTMP(dofCounter);
-  std::copy(solVec, solVec + dofCounter, solVecTMP.begin());
-  //std::cout<<"solution\n";
-  //printMatrixAndVector(std::vector<std::vector<double> >(), solVecTMP, VECTOR_ONLY, std::cout);
-  std::cout<<"solution L2 Norm = "<<computeNorm(gMassMatrix, solVecTMP, myFEM_L2)<<"\n"; 
+  // Compute L2 norm of the numerical solution
+  std::cout<<"solution L2 Norm = "<<computeNorm(MassMatrix, solutionVector, myFEM_L2_NORM)<<"\n"; 
   
-  /** compute exact error */
+  // Compute exact solution
   // TODO: come up with something better than this
-  std::vector<double> exactSolVec(dofCounter);
+  std::vector<double> exactSolutionVector(dofCounter);
   for (unsigned int iel = 0; iel < nel; ++iel) {
     std::vector<Point> supportPoints;
     supportPoints.push_back(startPoint+double(iel)/double(nel)*(endPoint-startPoint));
     supportPoints.push_back(startPoint+double(iel+1)/double(nel)*(endPoint-startPoint));
     //std::cout<<iel<<"  "<<supportPoints[0]<<"  "<<supportPoints[1]<<"\n";
     if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseLinear") {
-      exactSolVec[iel] = u(supportPoints[0]);
-      exactSolVec[iel+1] = u(supportPoints[1]);
+      exactSolutionVector[iel] = u(supportPoints[0]);
+      exactSolutionVector[iel+1] = u(supportPoints[1]);
     } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseQuadratic") {
-      exactSolVec[iel] = u(supportPoints[0]);
-      exactSolVec[iel+1] = u(supportPoints[1]);
-      exactSolVec[iel+2] = u((supportPoints[0] + supportPoints[1]) / 2.0);
+      exactSolutionVector[iel] = u(supportPoints[0]);
+      exactSolutionVector[iel+1] = u(supportPoints[1]);
+      exactSolutionVector[iel+2] = u((supportPoints[0] + supportPoints[1]) / 2.0);
     } else {
       std::cerr<<"mais qu'est-ce que tu fais la?\n";
       abort();
     }
   } // end for iel
-  std::cout<<"exact solution L2 Norm = "<<computeNorm(gMassMatrix, exactSolVec, myFEM_L2)<<"\n"; 
-
-  std::vector<double> errVec;
+  // Get its L2 norm
+  std::cout<<"exact solution L2 Norm = "<<computeNorm(MassMatrix, exactSolutionVector, myFEM_L2_NORM)<<"\n"; 
+    
+  // Compute exact error
+  std::vector<double> exactErrorVector;
   for (unsigned int idof = 0; idof < dofCounter; ++idof) {
-    errVec.push_back(solVec[idof] - exactSolVec[idof]);
+    exactErrorVector.push_back(solutionVector[idof] - exactSolutionVector[idof]);
   } // end for idof
   //std::cout<<"exact error\n";
-  //printMatrixAndVector(std::vector<std::vector<double> >(), errVec, VECTOR_ONLY, std::cout);
+  //printMatrixAndVector(std::vector<std::vector<double> >(), exactErrorVector, myFEM_VECTOR_ONLY, std::cout);
 
-  double errL2Norm = computeNorm(gMassMatrix, errVec, myFEM_L2);
-  std::cout<<"error L1 Norm = "<<computeNorm(gMassMatrix, errVec, myFEM_L1)<<"\n"; 
-  std::cout<<"error L2 Norm = "<<computeNorm(gMassMatrix, errVec, myFEM_L2)<<"\n"; 
-  std::cout<<"error H1 Norm = "<<computeNorm(gMassMatrix, errVec, myFEM_H1, gStiffnessMatrix)<<"\n"; 
+  // ... and get its L1, L2, and H1 norms
+  std::cout<<"error L1 Norm = "<<computeNorm(MassMatrix, exactErrorVector, myFEM_L1_NORM)<<"\n"; 
+  std::cout<<"error L2 Norm = "<<computeNorm(MassMatrix, exactErrorVector, myFEM_L2_NORM)<<"\n"; 
+  std::cout<<"error H1 Norm = "<<computeNorm(MassMatrix, exactErrorVector, myFEM_H1_NORM, StiffnessMatrix)<<"\n"; 
 
   std::cout<<"#### END ######\n";
   }
