@@ -50,7 +50,7 @@ protected:
 
 class Cell { 
 public:
-  Cell(std::vector<unsigned int> l, unsigned int i) : id(i), t("unnamed"), lp(l) { }
+  Cell(std::vector<unsigned int> l, unsigned int i) : id(i), t("notype"), lp(l) { }
   ~Cell() { }
   Cell(const Cell& c) : id(c.id), t(c.t), lp(c.lp) { }
   Cell& operator=(const Cell& c) { if (this==&c) return *this; id = c.id; t = c.t; lp = c.lp; return *this; }
@@ -682,11 +682,12 @@ int main(int argc, char *argv[]) {
                            + std::string("Where: number_of_elements must be a positive integer\n")
                            + std::string("       type_of_basis_functions must be 1 for PiecewiseLinear or 2 for PiecewiseQuadratici\n")
                            + std::string("       type_of_quadrature_rule must be 2 for GaussianTwoPoints or 3 for GaussianThreePoints\n");
+  /*
   for (int i = 0; i < argc; ++i) {
     std::cout<<argv[i]<<" ";
   }
   std::cout<<"\n";
-
+  */
   if (argc > 1) {
     nel = atoi(argv[1]);
   }
@@ -710,50 +711,51 @@ int main(int argc, char *argv[]) {
       abort();
     }
   }
-
   //std::cout<<basisType<<std::endl;
   //std::cout<<quadType<<std::endl;
   //abort();
 
   std::cout<<"#### BEGIN ######\n";
   std::cout<<"number of elements = "<<nel<<"\n";
-  // construct nel elements
+  // Construct nel elements
+  std::cout<<"#### BUILD FINITE ELEMENTS ######\n";
+  std::vector<FiniteElement*> finiteElements;
+  // Create a pointer to a reference element
   ReferenceElement *referenceElement = new ReferenceElement(basisType);
-  std::cout<<"basis functions = "<<referenceElement->getTypeOfBasisFunctions()<<"\n";
 
-  std::vector<FiniteElement> finiteElements;
+  // Create triangualtion embryo
+  // TODO: move towards triangulation class
   Point startPoint(0.0); Point endPoint(1.0);
   for (unsigned int iel; iel < nel; ++iel) {
     std::vector<Point> supportPoints;
     supportPoints.push_back(startPoint+double(iel)/double(nel)*(endPoint-startPoint));
     supportPoints.push_back(startPoint+double(iel+1)/double(nel)*(endPoint-startPoint));
     //std::cout<<iel<<"  "<<supportPoints[0]<<"  "<<supportPoints[1]<<"\n";
-    finiteElements.push_back(FiniteElement(supportPoints, referenceElement));
+    finiteElements.push_back(new FiniteElement(supportPoints, referenceElement));
   } // end for iel
 
-  // distribute the Degrees Of Freedoms (DOF)
+  // Distribute the Degrees Of Freedoms (DOF)
   // TODO: need to come up with something better than this
   unsigned int dofCounter = 0;
   for (unsigned int iel; iel < nel; ++iel) {
-    finiteElements[iel].setDOF(dofCounter);
+    finiteElements[iel]->setDOF(dofCounter);
     dofCounter--;
   } // end for iel
   dofCounter++;
 
-  // create global matrix and global rhs
+  // Create global matrix and global rhs
   std::vector<std::vector<double> > globalMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
   std::vector<double> globalRHS(dofCounter, 0.0);
-  // create mass and stiffness matrix
+  // Create mass and stiffness matrix
   std::vector<std::vector<double> > StiffnessMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
   std::vector<std::vector<double> > MassMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
-  // create null vector and null matrix
+  // Create null vector and null matrix
   std::vector<std::vector<double> > nullMatrix;
   std::vector<double> nullVector;
 
+  // Create pointer to a quadrature rule
   QuadratureRule *quadratureRule;
   if (quadType == "GaussianTwoPoints") {
-    //std::cout<<"Iwasthere"<<std::endl; 
-    //abort();
     quadratureRule = new GaussianTwoPoints;
   } else if (quadType == "GaussianThreePoints") {
     quadratureRule = new GaussianThreePoints;
@@ -761,31 +763,30 @@ int main(int argc, char *argv[]) {
     std::cerr<<"pb with qr"<<std::endl;
     abort();
   }
-  std::cout<<"quadrature rule = "<<quadratureRule->getType()<<"\n";
-  UpdateFlags updateFlags;
 
-  FEValues feValues(NULL, quadratureRule, updateFlags); 
+  std::cout<<"#### ASSEMBLE MATRIX AND RHS ######\n";
+  UpdateFlags updateFlags;
+  FEValues *feValues = new FEValues(NULL, quadratureRule, updateFlags); 
   for (unsigned int iel = 0; iel < nel; ++iel) {
-  std::cout<<"##########\n";
     std::cout<<"element #"<<iel<<"\n";
     // compute FE values for element iel
-    feValues.reinit(&finiteElements[iel]);
+    feValues->reinit(finiteElements[iel]);
 
     // compute local matrix
-    std::vector<std::vector<double> > localMatrix = computeLocalMatrix(&feValues, false, std::cout, 5);
+    std::vector<std::vector<double> > localMatrix = computeLocalMatrix(feValues, false, std::cout, 5);
     // compute local rhs
-    std::vector<double> localRHS = computeLocalRHS(&feValues, false, std::cout, 5);
+    std::vector<double> localRHS = computeLocalRHS(feValues, false, std::cout, 5);
     // compute local mass and stiffness matrices
-    std::vector<std::vector<double> > localStiffnessMatrix = computeLocalMatrix(&feValues, false, std::cout, 5, &aStiffness, &qStiffness);
-    std::vector<std::vector<double> > localMassMatrix = computeLocalMatrix(&feValues, false, std::cout, 5, &aMass, &aStiffness);
+    std::vector<std::vector<double> > localStiffnessMatrix = computeLocalMatrix(feValues, false, std::cout, 5, &aStiffness, &qStiffness);
+    std::vector<std::vector<double> > localMassMatrix = computeLocalMatrix(feValues, false, std::cout, 5, &aMass, &aStiffness);
 
     // distribute local to global
-    distributeLocal2Global(&feValues, localMatrix, localRHS, globalMatrix, globalRHS, myFEM_BOTH_MATRIX_AND_VECTOR, myFEM_MAX_DEBUG);
+    distributeLocal2Global(feValues, localMatrix, localRHS, globalMatrix, globalRHS, myFEM_BOTH_MATRIX_AND_VECTOR, myFEM_MAX_DEBUG);
     std::cout<<"local matrix and local rhs\n";
     printMatrixAndVector(localMatrix, localRHS, myFEM_BOTH_MATRIX_AND_VECTOR, std::cout);
     // same thing for mass and stiffness
-    distributeLocal2Global(&feValues, localStiffnessMatrix, nullVector, StiffnessMatrix, nullVector, myFEM_MATRIX_ONLY);
-    distributeLocal2Global(&feValues, localMassMatrix, nullVector, MassMatrix, nullVector, myFEM_MATRIX_ONLY);
+    distributeLocal2Global(feValues, localStiffnessMatrix, nullVector, StiffnessMatrix, nullVector, myFEM_MATRIX_ONLY);
+    distributeLocal2Global(feValues, localMassMatrix, nullVector, MassMatrix, nullVector, myFEM_MATRIX_ONLY);
 
   } // end for iel
 
@@ -793,17 +794,17 @@ int main(int argc, char *argv[]) {
   std::cout<<"global number of DOF = "<<dofCounter<<"\n";
 
   if (nel <= 10) {
-    // print out global matrix and global rhs
+    // Print out global matrix and global rhs
     std::cout<<"global matrix and global rhs\n";
     printMatrixAndVector(globalMatrix, globalRHS, myFEM_BOTH_MATRIX_AND_VECTOR, std::cout);
-    // same thing with mass and stiffness
+    // ... same thing with mass and stiffness
     std::cout<<"stiffness matrix\n";
     printMatrixAndVector(StiffnessMatrix, nullVector, myFEM_MATRIX_ONLY, std::cout);
     std::cout<<"mass matrix\n";
     printMatrixAndVector(MassMatrix, nullVector, myFEM_MATRIX_ONLY, std::cout);
   }
 
-  // print matrix and RHS to files to check with matlab
+  // Print matrix and RHS to files to check with matlab
   std::fstream foutMatrix;
   std::fstream foutRHS;
   foutMatrix.open("matrix.dat", std::fstream::out);
@@ -812,7 +813,6 @@ int main(int argc, char *argv[]) {
   printMatrixAndVector(nullMatrix, globalRHS, myFEM_VECTOR_ONLY, foutRHS, 9, 5, myFEM_MAX_DEBUG);
   foutMatrix.close();
   foutRHS.close();
-
 
 #ifdef EBILE
   std::cout<<"tu te crois malin hein? gros ebile :D\n";
@@ -827,6 +827,8 @@ int main(int argc, char *argv[]) {
   
   // Compute exact solution
   // TODO: come up with something better than this
+  //       need iterator over nodes
+  //       DOFHandler class
   std::vector<double> exactSolutionVector(dofCounter);
   for (unsigned int iel = 0; iel < nel; ++iel) {
     std::vector<Point> supportPoints;
@@ -861,6 +863,14 @@ int main(int argc, char *argv[]) {
   std::cout<<"error L2 Norm = "<<computeNorm(MassMatrix, exactErrorVector, myFEM_L2_NORM)<<"\n"; 
   std::cout<<"error H1 Norm = "<<computeNorm(MassMatrix, exactErrorVector, myFEM_H1_NORM, StiffnessMatrix)<<"\n"; 
 
+  std::cout<<"basis functions = "<<referenceElement->getTypeOfBasisFunctions()<<"\n";
+  std::cout<<"quadrature rule = "<<quadratureRule->getType()<<"\n";
+
+  // Delete allocated memory
+  delete feValues;
+  for (unsigned int iel = 0; iel < nel; ++iel) { delete finiteElements[iel]; }
+  delete referenceElement;
+  delete quadratureRule;
   std::cout<<"#### END ######\n";
   }
 
