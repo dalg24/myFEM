@@ -314,8 +314,8 @@ std::vector<std::vector<double> > computeLocalMatrix(FEValues *feValues,
     bool verbose = false, 
     std::ostream& os = std::cout,
     unsigned int debugLevel = 1,
-    double (*aa)(Point) = &a,
-    double (*qq)(Point) = &q) {
+    double (*pa)(Point) = &a,
+    double (*pq)(Point) = &q) {
   /** get quadrature points */
   std::vector<Point> quadraturePoints = feValues->getQuadraturePoints();
   const unsigned int nqp = quadraturePoints.size();
@@ -333,8 +333,8 @@ std::vector<std::vector<double> > computeLocalMatrix(FEValues *feValues,
   for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
     for (unsigned int idof = 0; idof < ndof; ++idof) {
       for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
-        localMatrix[idof][jdof] += ( aa(quadraturePoints[iqp]) * feValues->getShapeDx(idof, iqp) * feValues->getShapeDx(jdof, iqp)
-                                     + qq(quadraturePoints[iqp]) * feValues->getShapeValue(idof, iqp) * feValues->getShapeValue(jdof, iqp)
+        localMatrix[idof][jdof] += ( pa(quadraturePoints[iqp]) * feValues->getShapeDx(idof, iqp) * feValues->getShapeDx(jdof, iqp)
+                                     + pq(quadraturePoints[iqp]) * feValues->getShapeValue(idof, iqp) * feValues->getShapeValue(jdof, iqp)
                                    ) * feValues->getDeterminantOfJacobianTimesWeight(iqp);
         if ((verbose)
             && (debugLevel > 6)) {
@@ -366,7 +366,8 @@ std::vector<std::vector<double> > computeLocalMatrix(FEValues *feValues,
 std::vector<double> computeLocalRHS(FEValues *feValues, 
     bool verbose = false, 
     std::ostream& os = std::cout,
-    unsigned int debugLevel = 1) {
+    unsigned int debugLevel = 1,
+    double (*pf)(Point) = &f) {
   /** get quadrature points */
   std::vector<Point> quadraturePoints = feValues->getQuadraturePoints();
   const unsigned int nqp = quadraturePoints.size();
@@ -383,7 +384,7 @@ std::vector<double> computeLocalRHS(FEValues *feValues,
   std::vector<double> localRHS(ndof, 0.0);
   for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
     for (unsigned int idof = 0; idof < ndof; ++idof) {
-      localRHS[idof] += f(quadraturePoints[iqp]) * feValues->getShapeValue(idof, iqp) * feValues->getDeterminantOfJacobianTimesWeight(iqp);
+      localRHS[idof] += pf(quadraturePoints[iqp]) * feValues->getShapeValue(idof, iqp) * feValues->getDeterminantOfJacobianTimesWeight(iqp);
       if ((verbose)
           && (debugLevel > 6)) {
         os<<"iqp="<<iqp<<quadraturePoints[iqp]<<"idof="<<idof<<"  "
@@ -402,51 +403,139 @@ std::vector<double> computeLocalRHS(FEValues *feValues,
   return localRHS;
 }
 
-enum PRINT_t { BOTH_MATRIX_AND_VECTOR, MATRIX_ONLY, VECTOR_ONLY };
-void printMatrixAndVector(std::vector<std::vector<double> > Matrix,
-    std::vector<double> Vector,
-    PRINT_t what = BOTH_MATRIX_AND_VECTOR,
+enum DebugLevel_t { myFEM_NO_DEBUG, myFEM_MIN_DEBUG, myFEM_MED_DEBUG, myFEM_MAX_DEBUG };
+enum Object_t { myFEM_BOTH_MATRIX_AND_VECTOR, myFEM_MATRIX_ONLY, myFEM_VECTOR_ONLY };
+void distributeLocal2Global(FEValues *feValues,
+    const std::vector<std::vector<double> >& localMatrix,
+    const std::vector<double>& localVector,
+    std::vector<std::vector<double> >& globalMatrix,
+    std::vector<double>& globalVector,
+    Object_t handleObject = myFEM_BOTH_MATRIX_AND_VECTOR,
+    DebugLevel_t debugLevel = myFEM_NO_DEBUG) {
+  // get number of DOF
+  const unsigned int nldof = feValues->getFiniteElement()->getNumberOfDOF();
+  if (debugLevel > myFEM_NO_DEBUG) {
+    unsigned int nldofCHECK = 0;
+    unsigned int ngdof = 0;
+    if (handleObject != myFEM_MATRIX_ONLY) {
+      nldofCHECK = localVector.size();
+      ngdof = globalVector.size();
+    } else {
+      nldofCHECK = localMatrix.size();
+      ngdof = globalMatrix.size();
+    }
+    assert(nldofCHECK == nldof);
+    assert(nldof != 0);
+    assert(ngdof != 0);
+    if (handleObject == myFEM_BOTH_MATRIX_AND_VECTOR) {
+      assert(localVector.size() == localMatrix.size());
+      assert(globalVector.size() == globalMatrix.size());
+    } // end if not matrix only
+    if (debugLevel == myFEM_MAX_DEBUG) {
+      if (handleObject != myFEM_VECTOR_ONLY) {
+        for (unsigned int ildof = 0; ildof < nldof; ++ildof) {
+          assert(localMatrix[ildof].size() == nldof);
+        } // end for ildof
+        for (unsigned int igdof = 0; igdof < ngdof; ++igdof) {
+          assert(globalMatrix[igdof].size() == ngdof);
+        } // end for igdof
+      } // end if not vector only
+    } // end if debugLevel hardcore
+  } // end if debugLevel not zero
+  // get DOF map
+  std::map<unsigned int, unsigned int> dofMap = feValues->getFiniteElement()->getDOFMap();
+  if (debugLevel > myFEM_NO_DEBUG) {
+    std::cout<<"DOF map\n";
+    for (unsigned int ildof = 0; ildof < nldof; ++ildof) {
+      unsigned int igdof = dofMap[ildof];
+      std::cout<<ildof<<" -> "<<igdof<<"\n";
+    } // end for ildof
+  } // end if debugLevel not zero
+  // distribute local to global
+  for (unsigned int ildof = 0; ildof < nldof; ++ildof) {
+    unsigned int igdof = dofMap[ildof];
+    if (handleObject != myFEM_VECTOR_ONLY) {
+      for (unsigned int jldof = 0; jldof < nldof; ++jldof) {
+        unsigned int jgdof = dofMap[jldof];
+        globalMatrix[igdof][jgdof] += localMatrix[ildof][jldof];
+      } // end for jldof
+    } // end if not vector only
+    if (handleObject != myFEM_MATRIX_ONLY) {
+      globalVector[igdof] += localVector[ildof];
+    } // end for ildof
+  } // end if not matrix only
+}
+
+void printMatrixAndVector(const std::vector<std::vector<double> >& Matrix,
+    const std::vector<double>& Vector,
+    Object_t handleObject = myFEM_BOTH_MATRIX_AND_VECTOR,
     std::ostream& os = std::cout,
     int setwVal = 7,
-    int setprecisionVal = 3) {
+    int setprecisionVal = 3,
+    DebugLevel_t debugLevel = myFEM_NO_DEBUG) {
+  // get number of DOF
   unsigned int ndof = 0;
-  if (what != MATRIX_ONLY) {
+  if (handleObject != myFEM_MATRIX_ONLY) {
     ndof = Vector.size();
   } else {
     ndof = Matrix.size();
-  }
-  assert(ndof != 0);
+  } // end if not matrix only
+  if (debugLevel > myFEM_NO_DEBUG) {
+    assert(ndof != 0);
+    if (handleObject == myFEM_BOTH_MATRIX_AND_VECTOR) {
+      assert(Vector.size() == Matrix.size());
+    } // end if both matrix and vector
+    if (debugLevel == myFEM_MAX_DEBUG) {
+      if (handleObject != myFEM_VECTOR_ONLY) {
+        for (unsigned int idof = 0; idof < ndof; ++idof) {
+          assert(Matrix[idof].size() == ndof);
+        } // end for idof
+      } // end if not vector only
+    } // end if debugLevel hardcore
+  } // end if debugLevel not zero
+  // print the stuff
   for (unsigned int idof = 0; idof < ndof; ++idof) {
-    if (what != VECTOR_ONLY) {
+    if (handleObject != myFEM_VECTOR_ONLY) {
       for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
         os<<std::setw(setwVal)
           <<std::setprecision(setprecisionVal)
           <<Matrix[idof][jdof]<<"  ";
       } // end for jdof
-    } //end if
-    if (what == BOTH_MATRIX_AND_VECTOR) {
+    } //end if not vector only
+    if (handleObject == myFEM_BOTH_MATRIX_AND_VECTOR) {
       os<<"||  ";
-    } // end if
-    if (what != MATRIX_ONLY) {
+    } // end if both matrix and vector
+    if (handleObject != myFEM_MATRIX_ONLY) {
       os<<std::setw(setwVal)
         <<std::setprecision(setprecisionVal)
         <<Vector[idof]<<"\n";
     } else {
       os<<"\n";
-    } // end if
+    } // end if not matrix only
   } // end for idof
 }
-
-double computeL2Norm(std::vector<std::vector<double> > MassMatrix,
-    std::vector<double> Vector) {
-  double L2Norm = 0.0;
+                    
+// TODO: replace prefix myFEM_ by namespace
+enum Norm_t { myFEM_L1, myFEM_L2, myFEM_H1 };
+double computeNorm(const std::vector<std::vector<double> >& MassMatrix,
+    const std::vector<double>& Vector,
+    Norm_t normType = myFEM_L2,
+    const std::vector<std::vector<double> >& StiffnessMatrix = std::vector<std::vector<double> >()) {
+  double Norm = 0.0;
   unsigned int ndof = Vector.size();
   for (unsigned int idof = 0; idof < ndof; ++idof) {
     for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
-      L2Norm += MassMatrix[idof][jdof] * Vector[jdof] * Vector[jdof];
+      if (normType == myFEM_L1) {
+        Norm += MassMatrix[idof][jdof] * fabs(Vector[jdof]);
+      } else {
+        Norm += MassMatrix[idof][jdof] * Vector[jdof] * Vector[jdof];
+        if (normType == myFEM_H1) {
+          Norm += StiffnessMatrix[idof][jdof] * Vector[jdof] * Vector[jdof];
+        } // end if H1
+      } // end if not L1
     } // end for jdof
   } // end for idof
-  return L2Norm;
+  return Norm;
 }
 
 int main(int argc, char *argv[]) {
@@ -454,12 +543,18 @@ int main(int argc, char *argv[]) {
   { /** nouveau test */
   unsigned int nel = 10;
   std::string basisType = "PiecewiseLinear";
-  std::string quadType = "GaussianTwoPoints";
+  std::string quadType = "GaussianThreePoints";
+  //TODO: make command line argument passing smarter than this
   std::string errorMessage = std::string("Error: Bad command line arguments\n")
                            + std::string("Usage: argv[0] number_of_elements type_of_basis_functions type_of_quadrature_rule\n")
                            + std::string("Where: number_of_elements must be a positive integer\n")
                            + std::string("       type_of_basis_functions must be 1 for PiecewiseLinear or 2 for PiecewiseQuadratici\n")
                            + std::string("       type_of_quadrature_rule must be 2 for GaussianTwoPoints or 3 for GaussianThreePoints\n");
+  for (int i = 0; i < argc; ++i) {
+    std::cout<<argv[i]<<" ";
+  }
+  std::cout<<"\n";
+
   if (argc > 1) {
     nel = atoi(argv[1]);
   }
@@ -483,6 +578,10 @@ int main(int argc, char *argv[]) {
       abort();
     }
   }
+
+  //std::cout<<basisType<<std::endl;
+  //std::cout<<quadType<<std::endl;
+  //abort();
 
   std::cout<<"#### BEGIN ######\n";
   std::cout<<"number of elements = "<<nel<<"\n";
@@ -514,12 +613,19 @@ int main(int argc, char *argv[]) {
   std::vector<std::vector<double> > gStiffnessMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
   std::vector<std::vector<double> > gMassMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
   std::vector<double> globalRHS(dofCounter, 0.0);
+  std::vector<std::vector<double> > nullMatrix;
+  std::vector<double> nullVector;
 
   QuadratureRule *quadratureRule;
   if (quadType == "GaussianTwoPoints") {
+    //std::cout<<"Iwasthere"<<std::endl; 
+    //abort();
     quadratureRule = new GaussianTwoPoints;
   } else if (quadType == "GaussianThreePoints") {
     quadratureRule = new GaussianThreePoints;
+  } else {
+    std::cerr<<"pb with qr"<<std::endl;
+    abort();
   }
   std::cout<<"quadrature rule = "<<quadratureRule->getType()<<"\n";
   UpdateFlags updateFlags;
@@ -539,15 +645,19 @@ int main(int argc, char *argv[]) {
     // compute local rhs
     std::vector<double> localRHS = computeLocalRHS(&feValues, false, std::cout, 5);
 
-  /** get DOF map */
-  std::map<unsigned int, unsigned int> dofMap = feValues.getFiniteElement()->getDOFMap();
-  const unsigned int ndof = feValues.getFiniteElement()->getNumberOfDOF();
-  std::cout<<"DOF map\n";
-  for (unsigned int idof = 0; idof < ndof; ++idof) {
-    std::cout<<idof<<" -> "<<dofMap[idof]<<"\n";
-  } // end for idof
+    /** get DOF map */
+    std::map<unsigned int, unsigned int> dofMap = feValues.getFiniteElement()->getDOFMap();
+    const unsigned int ndof = feValues.getFiniteElement()->getNumberOfDOF();
+    std::cout<<"DOF map\n";
+    for (unsigned int idof = 0; idof < ndof; ++idof) {
+      std::cout<<idof<<" -> "<<dofMap[idof]<<"\n";
+    } // end for idof
 
     // distribute local to global
+    distributeLocal2Global(&feValues, localMatrix, localRHS, globalMatrix, globalRHS, myFEM_BOTH_MATRIX_AND_VECTOR, myFEM_MAX_DEBUG);
+    distributeLocal2Global(&feValues, lStiffnessMatrix, nullVector, gStiffnessMatrix, nullVector, myFEM_MATRIX_ONLY);
+    distributeLocal2Global(&feValues, lMassMatrix, nullVector, gMassMatrix, nullVector, myFEM_MATRIX_ONLY);
+    /*
     for (unsigned int idof = 0; idof < ndof; ++idof) {
       for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
         globalMatrix[dofMap[idof]][dofMap[jdof]] += localMatrix[idof][jdof];
@@ -556,8 +666,9 @@ int main(int argc, char *argv[]) {
       } // end for jdof
       globalRHS[dofMap[idof]] += localRHS[idof];
     } // end for idof
+    */
     std::cout<<"local matrix and local rhs\n";
-    printMatrixAndVector(localMatrix, localRHS, BOTH_MATRIX_AND_VECTOR, std::cout);
+    printMatrixAndVector(localMatrix, localRHS, myFEM_BOTH_MATRIX_AND_VECTOR, std::cout);
 
   } // end for iel
 
@@ -565,23 +676,23 @@ int main(int argc, char *argv[]) {
   std::cout<<"global number of DOF = "<<dofCounter<<"\n";
 
   // print out global matrix and global rhs
-  //std::cout<<"global matrix and global rhs\n";
-  //printMatrixAndRHS(globalMatrix, globalRHS);
+  std::cout<<"global matrix and global rhs\n";
+  printMatrixAndVector(globalMatrix, globalRHS, myFEM_BOTH_MATRIX_AND_VECTOR, std::cout);
 
   // print matrix and RHS to files to check with matlab
   std::fstream foutMatrix;
   std::fstream foutRHS;
   foutMatrix.open("matrix.dat", std::fstream::out);
   foutRHS.open("rhs.dat", std::fstream::out);
-  printMatrixAndVector(globalMatrix, std::vector<double>(), MATRIX_ONLY, foutMatrix, 9, 5);
-  printMatrixAndVector(std::vector<std::vector<double> >(), globalRHS, VECTOR_ONLY, foutRHS, 9, 5);
+  printMatrixAndVector(globalMatrix, nullVector, myFEM_MATRIX_ONLY, foutMatrix, 9, 5, myFEM_MAX_DEBUG);
+  printMatrixAndVector(nullMatrix, globalRHS, myFEM_VECTOR_ONLY, foutRHS, 9, 5, myFEM_MAX_DEBUG);
   foutMatrix.close();
   foutRHS.close();
 
   //std::cout<<"stiffness matrix\n";
-  //printMatrixAndVector(gStiffnessMatrix, std::vector<double>(), MATRIX_ONLY, std::cout);
+  //printMatrixAndVector(gStiffnessMatrix, nullVector, myFEM_MATRIX_ONLY, std::cout);
   //std::cout<<"mass matrix\n";
-  //printMatrixAndVector(gMassMatrix, std::vector<double>(), MATRIX_ONLY, std::cout);
+  //printMatrixAndVector(gMassMatrix, nullVector, myFEM_MATRIX_ONLY, std::cout);
 
 #ifdef EBILE
   std::cout<<"tu te crois malin hein? gros ebile :D\n";
@@ -641,11 +752,12 @@ int main(int argc, char *argv[]) {
   std::copy(solVec, solVec + dofCounter, solVecTMP.begin());
   //std::cout<<"solution\n";
   //printMatrixAndVector(std::vector<std::vector<double> >(), solVecTMP, VECTOR_ONLY, std::cout);
+  std::cout<<"solution L2 Norm = "<<computeNorm(gMassMatrix, solVecTMP, myFEM_L2)<<"\n"; 
   
   /** compute exact error */
   // TODO: come up with something better than this
   std::vector<double> exactSolVec(dofCounter);
-  for (unsigned int iel; iel < nel; ++iel) {
+  for (unsigned int iel = 0; iel < nel; ++iel) {
     std::vector<Point> supportPoints;
     supportPoints.push_back(startPoint+double(iel)/double(nel)*(endPoint-startPoint));
     supportPoints.push_back(startPoint+double(iel+1)/double(nel)*(endPoint-startPoint));
@@ -662,6 +774,7 @@ int main(int argc, char *argv[]) {
       abort();
     }
   } // end for iel
+  std::cout<<"exact solution L2 Norm = "<<computeNorm(gMassMatrix, exactSolVec, myFEM_L2)<<"\n"; 
 
   std::vector<double> errVec;
   for (unsigned int idof = 0; idof < dofCounter; ++idof) {
@@ -670,8 +783,10 @@ int main(int argc, char *argv[]) {
   //std::cout<<"exact error\n";
   //printMatrixAndVector(std::vector<std::vector<double> >(), errVec, VECTOR_ONLY, std::cout);
 
-  double errL2Norm = computeL2Norm(gMassMatrix, errVec);
-  std::cout<<"error L2 Norm = "<<errL2Norm<<"\n"; 
+  double errL2Norm = computeNorm(gMassMatrix, errVec, myFEM_L2);
+  std::cout<<"error L1 Norm = "<<computeNorm(gMassMatrix, errVec, myFEM_L1)<<"\n"; 
+  std::cout<<"error L2 Norm = "<<computeNorm(gMassMatrix, errVec, myFEM_L2)<<"\n"; 
+  std::cout<<"error H1 Norm = "<<computeNorm(gMassMatrix, errVec, myFEM_H1, gStiffnessMatrix)<<"\n"; 
 
   std::cout<<"#### END ######\n";
   }
