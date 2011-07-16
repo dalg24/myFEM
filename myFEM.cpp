@@ -367,101 +367,71 @@ double qMass(Point p) { return 1.0; }
 double aStiffness(Point p) { return 1.0; }
 double qStiffness(Point p) { return 0.0; }
 
-std::vector<std::vector<double> > computeLocalMatrix(FEValues *feValues, 
-    bool verbose = false, 
-    std::ostream& os = std::cout,
-    unsigned int debugLevel = 1,
-    double (*pa)(Point) = &a,
-    double (*pq)(Point) = &q) {
-  /** get quadrature points */
-  std::vector<Point> quadraturePoints = feValues->getQuadraturePoints();
-  const unsigned int nqp = quadraturePoints.size();
-  if ((verbose)
-      && (debugLevel > 3)) {
-    os<<"quadrature points\n";
-    for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
-      os<<iqp<<" = "<<quadraturePoints[iqp]<<"\n";
-    } // end for iqp
-  } // end if verbose
-
-  /** compute local matrix */
-  const unsigned int ndof = feValues->getFiniteElement()->getNumberOfDOF();
-  std::vector<std::vector<double> > localMatrix(ndof, std::vector<double>(ndof, 0.0));
-  for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
-    for (unsigned int idof = 0; idof < ndof; ++idof) {
-      for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
-        localMatrix[idof][jdof] += ( pa(quadraturePoints[iqp]) * feValues->getShapeDx(idof, iqp) * feValues->getShapeDx(jdof, iqp)
-                                     + pq(quadraturePoints[iqp]) * feValues->getShapeValue(idof, iqp) * feValues->getShapeValue(jdof, iqp)
-                                   ) * feValues->getDeterminantOfJacobianTimesWeight(iqp);
-        if ((verbose)
-            && (debugLevel > 6)) {
-          os<<"iqp="<<iqp<<quadraturePoints[iqp]<<"idof="<<idof<<"  jdof="<<jdof<<"  "
-            <<"a="<<a(quadraturePoints[iqp])<<"  "
-            <<"q="<<q(quadraturePoints[iqp])<<"  "
-            <<"phi_"<<idof<<"="<<feValues->getShapeValue(idof, iqp)<<"  "
-            <<"phi_"<<jdof<<"="<<feValues->getShapeValue(jdof, iqp)<<"  "
-            <<"DphiDx_"<<idof<<"="<<feValues->getShapeDx(idof, iqp)<<"  "
-            <<"DphiDx_"<<jdof<<"="<<feValues->getShapeDx(jdof, iqp)<<"  "
-            <<"JxW="<<feValues->getDeterminantOfJacobianTimesWeight(iqp)<<"\n";
-        } // end if verbose
-      } // end for jdof
-    } // end for idof
-  } //end for iqp           
-
-  if (verbose) {
-    for (unsigned int idof = 0; idof < ndof; ++idof) {
-      for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
-        os<<std::setw(7)<<std::setprecision(3)<<localMatrix[idof][jdof]<<"  ";
-      } // end for jdof
-      std::cout<<"\n";
-    } // end for idof
-  } // end if verbose
-
-  return localMatrix;
-}
-
-std::vector<double> computeLocalRHS(FEValues *feValues, 
-    bool verbose = false, 
-    std::ostream& os = std::cout,
-    unsigned int debugLevel = 1,
-    double (*pf)(Point) = &f) {
-  /** get quadrature points */
-  std::vector<Point> quadraturePoints = feValues->getQuadraturePoints();
-  const unsigned int nqp = quadraturePoints.size();
-  if ((verbose)
-      && (debugLevel > 3)) {
-    os<<"quadrature points\n";
-    for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
-      os<<iqp<<" = "<<quadraturePoints[iqp]<<"\n";
-    } // end for iqp
-  } // end if verbose
-
-  /** compute local RHS */
-  const unsigned int ndof = feValues->getFiniteElement()->getNumberOfDOF();
-  std::vector<double> localRHS(ndof, 0.0);
-  for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
-    for (unsigned int idof = 0; idof < ndof; ++idof) {
-      localRHS[idof] += pf(quadraturePoints[iqp]) * feValues->getShapeValue(idof, iqp) * feValues->getDeterminantOfJacobianTimesWeight(iqp);
-      if ((verbose)
-          && (debugLevel > 6)) {
-        os<<"iqp="<<iqp<<quadraturePoints[iqp]<<"idof="<<idof<<"  "
-          <<"f="<<f(quadraturePoints[iqp])<<"  "
-          <<"phi_"<<idof<<"="<<feValues->getShapeValue(idof, iqp)<<"  "
-          <<"JxW="<<feValues->getDeterminantOfJacobianTimesWeight(iqp)<<"\n";
-      } //end if verbose
-    } // end for idof
-  } //end for iqp
-  if (verbose) {
-    for (unsigned int idof = 0; idof < ndof; ++idof) {
-      os<<std::setprecision(3)<<localRHS[idof]<<"\n";
-    } // end for idof
-  } //end if verbose
-
-  return localRHS;
-}
-
 enum DebugLevel_t { myFEM_NO_DEBUG, myFEM_MIN_DEBUG, myFEM_MED_DEBUG, myFEM_MAX_DEBUG };
 enum Object_t { myFEM_BOTH_MATRIX_AND_VECTOR, myFEM_MATRIX_ONLY, myFEM_VECTOR_ONLY };
+void assembleLocal(FEValues *feValues, 
+    std::vector<std::vector<double> >& localMatrix,
+    std::vector<double>& localVector,
+    Object_t handleObject = myFEM_BOTH_MATRIX_AND_VECTOR,
+    double (*pa)(Point) = &a,
+    double (*pq)(Point) = &q,
+    double (*pf)(Point) = &f,
+    DebugLevel_t debugLevel = myFEM_NO_DEBUG,
+    std::ostream& os = std::cout) {
+  // Get the quadrature points
+  std::vector<Point> quadraturePoints = feValues->getQuadraturePoints();
+  const unsigned int nqp = quadraturePoints.size();
+  if (debugLevel > myFEM_NO_DEBUG) {
+    // TODO: better debug here
+    assert(localVector.size() == 0);
+    assert(localMatrix.size() == 0);
+    os<<"quadrature points\n";
+    for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
+      os<<iqp<<" = "<<quadraturePoints[iqp]<<"\n";
+    } // end for iqp
+  } // end if debugLevel not zero
+  // Get the number of DOF
+  const unsigned int ndof = feValues->getFiniteElement()->getNumberOfDOF();
+  // Initialize local matrix and vector
+  if (handleObject != myFEM_VECTOR_ONLY) {
+    localMatrix = std::vector<std::vector<double> >(ndof, std::vector<double>(ndof, 0.0));
+  } // end if handleObject not vector only
+  if (handleObject != myFEM_MATRIX_ONLY) {
+    localVector = std::vector<double>(ndof, 0.0);
+  } // end if handleObject not matrix only
+  // Compute local matrix and vector
+  for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
+    for (unsigned int idof = 0; idof < ndof; ++idof) {
+      if (handleObject != myFEM_VECTOR_ONLY) {
+        for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
+          localMatrix[idof][jdof] += ( pa(quadraturePoints[iqp]) * feValues->getShapeDx(idof, iqp) * feValues->getShapeDx(jdof, iqp)
+                                     + pq(quadraturePoints[iqp]) * feValues->getShapeValue(idof, iqp) * feValues->getShapeValue(jdof, iqp)
+                                     ) * feValues->getDeterminantOfJacobianTimesWeight(iqp);
+          if (debugLevel == myFEM_MAX_DEBUG) {
+            os<<"iqp="<<iqp<<quadraturePoints[iqp]<<"idof="<<idof<<"  jdof="<<jdof<<"  "
+              <<"a="<<a(quadraturePoints[iqp])<<"  "
+              <<"q="<<q(quadraturePoints[iqp])<<"  "
+              <<"phi_"<<idof<<"="<<feValues->getShapeValue(idof, iqp)<<"  "
+              <<"phi_"<<jdof<<"="<<feValues->getShapeValue(jdof, iqp)<<"  "
+              <<"DphiDx_"<<idof<<"="<<feValues->getShapeDx(idof, iqp)<<"  "
+              <<"DphiDx_"<<jdof<<"="<<feValues->getShapeDx(jdof, iqp)<<"  "
+              <<"JxW="<<feValues->getDeterminantOfJacobianTimesWeight(iqp)<<"\n";
+          } // end if debugLevel hardcore
+        } // end for jdof
+      } // end if handleObject not vector only
+      if (handleObject != myFEM_MATRIX_ONLY) {
+        localVector[idof] += pf(quadraturePoints[iqp]) * feValues->getShapeValue(idof, iqp) * feValues->getDeterminantOfJacobianTimesWeight(iqp);
+        if (debugLevel == myFEM_MAX_DEBUG) {
+          os<<"iqp="<<iqp<<quadraturePoints[iqp]<<"idof="<<idof<<"  "
+            <<"f="<<f(quadraturePoints[iqp])<<"  "
+            <<"phi_"<<idof<<"="<<feValues->getShapeValue(idof, iqp)<<"  "
+            <<"JxW="<<feValues->getDeterminantOfJacobianTimesWeight(iqp)<<"\n";
+        } //end if debugLevel hardcore
+      } // end if handleObject not matrix only
+    } // end for idof
+  } //end for iqp           
+}
+
 void distributeLocal2Global(FEValues *feValues,
     const std::vector<std::vector<double> >& localMatrix,
     const std::vector<double>& localVector,
@@ -469,7 +439,7 @@ void distributeLocal2Global(FEValues *feValues,
     std::vector<double>& globalVector,
     Object_t handleObject = myFEM_BOTH_MATRIX_AND_VECTOR,
     DebugLevel_t debugLevel = myFEM_NO_DEBUG) {
-  // get number of DOF
+  // Get the number of DOF
   const unsigned int nldof = feValues->getFiniteElement()->getNumberOfDOF();
   if (debugLevel > myFEM_NO_DEBUG) {
     unsigned int nldofCHECK = 0;
@@ -487,7 +457,7 @@ void distributeLocal2Global(FEValues *feValues,
     if (handleObject == myFEM_BOTH_MATRIX_AND_VECTOR) {
       assert(localVector.size() == localMatrix.size());
       assert(globalVector.size() == globalMatrix.size());
-    } // end if not matrix only
+    } // end if handleObject not matrix only
     if (debugLevel == myFEM_MAX_DEBUG) {
       if (handleObject != myFEM_VECTOR_ONLY) {
         for (unsigned int ildof = 0; ildof < nldof; ++ildof) {
@@ -496,10 +466,10 @@ void distributeLocal2Global(FEValues *feValues,
         for (unsigned int igdof = 0; igdof < ngdof; ++igdof) {
           assert(globalMatrix[igdof].size() == ngdof);
         } // end for igdof
-      } // end if not vector only
+      } // end if handleObject not vector only
     } // end if debugLevel hardcore
   } // end if debugLevel not zero
-  // get DOF map
+  // Get the DOF map
   std::map<unsigned int, unsigned int> dofMap = feValues->getFiniteElement()->getDOFMap();
   if (debugLevel > myFEM_NO_DEBUG) {
     std::cout<<"DOF map\n";
@@ -508,7 +478,7 @@ void distributeLocal2Global(FEValues *feValues,
       std::cout<<ildof<<" -> "<<igdof<<"\n";
     } // end for ildof
   } // end if debugLevel not zero
-  // distribute local to global
+  // Distribute local to global
   for (unsigned int ildof = 0; ildof < nldof; ++ildof) {
     unsigned int igdof = dofMap[ildof];
     if (handleObject != myFEM_VECTOR_ONLY) {
@@ -516,11 +486,11 @@ void distributeLocal2Global(FEValues *feValues,
         unsigned int jgdof = dofMap[jldof];
         globalMatrix[igdof][jgdof] += localMatrix[ildof][jldof];
       } // end for jldof
-    } // end if not vector only
+    } // end if handleObject not vector only
     if (handleObject != myFEM_MATRIX_ONLY) {
       globalVector[igdof] += localVector[ildof];
     } // end for ildof
-  } // end if not matrix only
+  } // end if handleObject not matrix only
 }
 
 void printMatrixAndVector(const std::vector<std::vector<double> >& Matrix,
@@ -530,27 +500,27 @@ void printMatrixAndVector(const std::vector<std::vector<double> >& Matrix,
     int setwVal = 7,
     int setprecisionVal = 3,
     DebugLevel_t debugLevel = myFEM_NO_DEBUG) {
-  // get number of DOF
+  // Get the number of DOF
   unsigned int ndof = 0;
   if (handleObject != myFEM_MATRIX_ONLY) {
     ndof = Vector.size();
   } else {
     ndof = Matrix.size();
-  } // end if not matrix only
+  } // end if handleObject not matrix only
   if (debugLevel > myFEM_NO_DEBUG) {
     assert(ndof != 0);
     if (handleObject == myFEM_BOTH_MATRIX_AND_VECTOR) {
       assert(Vector.size() == Matrix.size());
-    } // end if both matrix and vector
+    } // end if handleObject both matrix and vector
     if (debugLevel == myFEM_MAX_DEBUG) {
       if (handleObject != myFEM_VECTOR_ONLY) {
         for (unsigned int idof = 0; idof < ndof; ++idof) {
           assert(Matrix[idof].size() == ndof);
         } // end for idof
-      } // end if not vector only
+      } // end if handleObject not vector only
     } // end if debugLevel hardcore
   } // end if debugLevel not zero
-  // print the stuff
+  // Print the stuff out...
   for (unsigned int idof = 0; idof < ndof; ++idof) {
     if (handleObject != myFEM_VECTOR_ONLY) {
       for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
@@ -558,17 +528,17 @@ void printMatrixAndVector(const std::vector<std::vector<double> >& Matrix,
           <<std::setprecision(setprecisionVal)
           <<Matrix[idof][jdof]<<"  ";
       } // end for jdof
-    } //end if not vector only
+    } //end if handleObject not vector only
     if (handleObject == myFEM_BOTH_MATRIX_AND_VECTOR) {
       os<<"||  ";
-    } // end if both matrix and vector
+    } // end if handleObject both matrix and vector
     if (handleObject != myFEM_MATRIX_ONLY) {
       os<<std::setw(setwVal)
         <<std::setprecision(setprecisionVal)
         <<Vector[idof]<<"\n";
     } else {
       os<<"\n";
-    } // end if not matrix only
+    } // end if handleObject not matrix only
   } // end for idof
 }
                     
@@ -772,13 +742,17 @@ int main(int argc, char *argv[]) {
     // compute FE values for element iel
     feValues->reinit(finiteElements[iel]);
 
-    // compute local matrix
-    std::vector<std::vector<double> > localMatrix = computeLocalMatrix(feValues, false, std::cout, 5);
-    // compute local rhs
-    std::vector<double> localRHS = computeLocalRHS(feValues, false, std::cout, 5);
+    // compute local matrix and RHS
+    std::vector<std::vector<double> > localMatrix;
+    std::vector<double> localRHS; 
+    assembleLocal(feValues, localMatrix, localRHS, myFEM_BOTH_MATRIX_AND_VECTOR, &a, &q, &f, myFEM_MAX_DEBUG, std::cout);
+    //assembleLocal(feValues, localMatrix, nullVector, myFEM_MATRIX_ONLY, &a, &q, NULL, myFEM_MAX_DEBUG, std::cout);
+    //assembleLocal(feValues, nullMatrix, localRHS, myFEM_VECTOR_ONLY, NULL, NULL, &f, myFEM_MAX_DEBUG, std::cout);
     // compute local mass and stiffness matrices
-    std::vector<std::vector<double> > localStiffnessMatrix = computeLocalMatrix(feValues, false, std::cout, 5, &aStiffness, &qStiffness);
-    std::vector<std::vector<double> > localMassMatrix = computeLocalMatrix(feValues, false, std::cout, 5, &aMass, &aStiffness);
+    std::vector<std::vector<double> > localStiffnessMatrix;
+    std::vector<std::vector<double> > localMassMatrix;
+    assembleLocal(feValues, localStiffnessMatrix, nullVector, myFEM_MATRIX_ONLY, &aStiffness, &qStiffness, NULL, myFEM_NO_DEBUG, std::cout);
+    assembleLocal(feValues, localMassMatrix, nullVector, myFEM_MATRIX_ONLY, &aMass, &qMass, NULL, myFEM_NO_DEBUG, std::cout);
 
     // distribute local to global
     distributeLocal2Global(feValues, localMatrix, localRHS, globalMatrix, globalRHS, myFEM_BOTH_MATRIX_AND_VECTOR, myFEM_MAX_DEBUG);
@@ -789,9 +763,7 @@ int main(int argc, char *argv[]) {
     distributeLocal2Global(feValues, localMassMatrix, nullVector, MassMatrix, nullVector, myFEM_MATRIX_ONLY);
 
   } // end for iel
-
-  std::cout<<"##########\n";
-  std::cout<<"global number of DOF = "<<dofCounter<<"\n";
+  std::cout<<"#### END ASSEMBLY ROUTINE ######\n";
 
   if (nel <= 10) {
     // Print out global matrix and global rhs
@@ -818,10 +790,11 @@ int main(int argc, char *argv[]) {
   std::cout<<"tu te crois malin hein? gros ebile :D\n";
 #endif
 
-  std::cout<<"##########\n";
-  std::cout<<"solve using umfpack\n";
+  // Solve the FE problem
+  std::cout<<"#### SOLVE WITH UMFPACK ######\n";
   std::vector<double> solutionVector = solveMatrixTimesXEqualsRHS(globalMatrix, globalRHS);
 
+  std::cout<<"#### POSTPROCESSING ######\n";
   // Compute L2 norm of the numerical solution
   std::cout<<"solution L2 Norm = "<<computeNorm(MassMatrix, solutionVector, myFEM_L2_NORM)<<"\n"; 
   
@@ -865,6 +838,7 @@ int main(int argc, char *argv[]) {
 
   std::cout<<"basis functions = "<<referenceElement->getTypeOfBasisFunctions()<<"\n";
   std::cout<<"quadrature rule = "<<quadratureRule->getType()<<"\n";
+  std::cout<<"global number of DOF = "<<dofCounter<<"\n";
 
   // Delete allocated memory
   delete feValues;
