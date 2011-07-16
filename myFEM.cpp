@@ -24,6 +24,63 @@ public:
 
   double x; 
 }; // end class Point
+                                            
+////////////////////////// CHANTIER //////////////////////////////////////
+class SupportPoint { 
+public:
+  SupportPoint(Point p, unsigned int i, std::vector<unsigned int> l, std::vector<unsigned int> j = std::vector<unsigned int>()) : pp(p), id(i), al(l), m(j) { }
+  ~SupportPoint() { }
+  SupportPoint(const SupportPoint& sp) : pp(sp.pp), id(sp.id), al(sp.al), m(sp.m) { }
+  SupportPoint& operator=(const SupportPoint& sp) { if (this==&sp) return *this; pp = sp.pp; id = sp.id; al = sp.al; m = sp.m; return *this; }
+
+  void addMarker(unsigned int j) { m.push_back(j); }
+  void setMarkers(std::vector<unsigned int> j) { m = j; }
+
+  Point getPhysicalPoint() const { return pp; }
+  unsigned int getID() const { return id; }
+  std::vector<unsigned int> getAdjacencyList() const { return al; }
+  std::vector<unsigned int> getMarkers() const { return m; }
+
+protected:
+  Point pp;
+  unsigned int id;
+  std::vector<unsigned int> al;
+  std::vector<unsigned int> m;
+}; // end class SupportPoint
+
+class Cell { 
+public:
+  Cell(std::vector<unsigned int> l, unsigned int i) : id(i), t("unnamed"), lp(l) { }
+  ~Cell() { }
+  Cell(const Cell& c) : id(c.id), t(c.t), lp(c.lp) { }
+  Cell& operator=(const Cell& c) { if (this==&c) return *this; id = c.id; t = c.t; lp = c.lp; return *this; }
+
+  unsigned int getID() const { return id; }
+  std::string getType() { return t; }
+  std::vector<unsigned int> getSupportPointsID() const { return lp; }
+
+protected:
+  unsigned int id;
+  std::string t;
+  std::vector<unsigned int> lp;
+}; // end class Cell
+
+class Triangulation {
+public:
+  Triangulation(std::vector<SupportPoint> p = std::vector<SupportPoint>(), std::vector<Cell> c = std::vector<Cell>()) : lp(p), lc(c) { }
+  ~Triangulation() { }
+  Triangulation(const Triangulation& t) { }
+  Triangulation& operator=(const Triangulation& t) { }
+
+  void addSupportPoint(const SupportPoint& p) { lp.push_back(p); }
+  void addCell(const Cell& c) { lc.push_back(c); }
+
+protected:
+  std::vector<SupportPoint> lp;
+  std::vector<Cell> lc;
+}; // end class Triangulation
+
+class DOFHandler { }; // end class DOFHandler
 
 ////////////////////////// QUADRATURE RULE //////////////////////////////////////
 class QuadratureRule {
