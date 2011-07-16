@@ -129,37 +129,37 @@ public:
 ////////////////////////// SHAPE FUNCTIONS //////////////////////////////////////
 class BasisFunctions {
 public:
-  BasisFunctions() : type("notype") { }
+  BasisFunctions() : t("notype") { }
   ~BasisFunctions() { }
-  BasisFunctions(const BasisFunctions& bf) : nodes(bf.nodes) { }
-  BasisFunctions& operator=(const BasisFunctions& bf) { if (this==&bf) return *this; nodes = bf.nodes; return *this; }
+  BasisFunctions(const BasisFunctions& bf) : n(bf.n), t(bf.t) { }
+  BasisFunctions& operator=(const BasisFunctions& bf) { if (this==&bf) return *this; n = bf.n; t = bf.t; return *this; }
 
-  unsigned int getNumberOfNodes() const { return nodes.size(); }
-  Point getNode(unsigned int idof) const { return nodes[idof]; }
-  std::vector<Point> getNodes() const { return nodes; }
-  std::string getType() const { return type; }
+  unsigned int getNumberOfNodes() const { return n.size(); }
+  Point getNode(unsigned int idof) const { return n[idof]; }
+  std::vector<Point> getNodes() const { return n; }
+  std::string getType() const { return t; }
 
-  std::vector<Point> getSupportPoints() const { std::vector<Point> sp; sp.push_back(nodes[0]); sp.push_back(nodes[1]); return sp;}
+  std::vector<Point> getSupportPoints() const { std::vector<Point> sp; sp.push_back(n[0]); sp.push_back(n[1]); return sp;}
 
   virtual double getVal(unsigned int, Point) const = 0;
   virtual double getDx(unsigned int, Point) const = 0;
 
 protected:
-  std::vector<Point> nodes;
-  std::string type;
+  std::vector<Point> n;
+  std::string t;
 }; // end class BasisFunctions
 
 class PiecewiseLinear : public BasisFunctions {
 public:             
-  PiecewiseLinear(std::vector<Point> sp) { nodes = sp; type = "PiecewiseLinear"; }
+  PiecewiseLinear(std::vector<Point> sp) { n = sp; t = "PiecewiseLinear"; }
 
   double getVal(unsigned int idof, Point p) const {
-    assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
+    assert(n[0].x <= p.x); assert(p.x <= n[1].x);
     double value;
     if (idof == 0) {
-      value = (nodes[1].x - p.x) / (nodes[1].x - nodes[0].x); 
+      value = (n[1].x - p.x) / (n[1].x - n[0].x); 
     } else if (idof == 1) {
-      value = (p.x - nodes[0].x) / (nodes[1].x - nodes[0].x); 
+      value = (p.x - n[0].x) / (n[1].x - n[0].x); 
     } else {
       std::cerr<<"aie"<<std::endl;
       abort();
@@ -168,12 +168,12 @@ public:
   }
 
   double getDx(unsigned int idof, Point p) const {
-    assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
+    assert(n[0].x <= p.x); assert(p.x <= n[1].x);
     double value;
     if (idof == 0) {
-      value = -1.0 / (nodes[1].x - nodes[0].x); 
+      value = -1.0 / (n[1].x - n[0].x); 
     } else if (idof == 1) {
-      value = 1.0 / (nodes[1].x - nodes[0].x); 
+      value = 1.0 / (n[1].x - n[0].x); 
     } else {
       std::cerr<<"aie"<<std::endl;
       abort();
@@ -184,17 +184,17 @@ public:
 
 class PiecewiseQuadratic : public BasisFunctions {
 public:             
-  PiecewiseQuadratic(std::vector<Point> sp) { nodes = sp; nodes.push_back((sp[0] + sp[1]) / 2.0); type = "PiecewiseQuadratic"; }
+  PiecewiseQuadratic(std::vector<Point> sp) { assert(sp.size() == 2); n = sp; n.push_back((sp[0] + sp[1]) / 2.0); t = "PiecewiseQuadratic"; }
 
   double getVal(unsigned int idof, Point p) const {
-    assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
+    assert(n[0].x <= p.x); assert(p.x <= n[1].x);
     double value;
     if (idof == 0) {
-      value = (nodes[1].x - p.x) * (nodes[2].x - p.x) / ((nodes[1].x - nodes[0].x) * (nodes[2].x - nodes[0].x)); 
+      value = (n[1].x - p.x) * (n[2].x - p.x) / ((n[1].x - n[0].x) * (n[2].x - n[0].x)); 
     } else if (idof == 1) {
-      value = (nodes[2].x - p.x) * (nodes[0].x - p.x) / ((nodes[2].x - nodes[1].x) * (nodes[0].x - nodes[1].x)); 
+      value = (n[2].x - p.x) * (n[0].x - p.x) / ((n[2].x - n[1].x) * (n[0].x - n[1].x)); 
     } else if (idof == 2) {
-      value = 0.5*(nodes[0].x - p.x) * (nodes[1].x - p.x) / ((nodes[0].x - nodes[2].x) * (nodes[1].x - nodes[2].x)); 
+      value = (n[0].x - p.x) * (n[1].x - p.x) / ((n[0].x - n[2].x) * (n[1].x - n[2].x)); 
     } else {
       std::cerr<<"aie"<<std::endl;
       abort();
@@ -203,14 +203,14 @@ public:
   }
 
   double getDx(unsigned int idof, Point p) const {
-    assert(nodes[0].x <= p.x); assert(p.x <= nodes[1].x);
+    assert(n[0].x <= p.x); assert(p.x <= n[1].x);
     double value;
     if (idof == 0) {
-      value = (2.0 * p.x - nodes[1].x - nodes[2].x) / ((nodes[1].x - nodes[0].x) * (nodes[2].x - nodes[0].x)); 
+      value = (2.0 * p.x - n[1].x - n[2].x) / ((n[1].x - n[0].x) * (n[2].x - n[0].x)); 
     } else if (idof == 1) {
-      value = (2.0 * p.x - nodes[2].x - nodes[0].x) / ((nodes[2].x - nodes[1].x) * (nodes[0].x - nodes[1].x)); 
+      value = (2.0 * p.x - n[2].x - n[0].x) / ((n[2].x - n[1].x) * (n[0].x - n[1].x)); 
     } else if (idof == 2) {
-      value = 0.5*(2.0 * p.x - nodes[0].x - nodes[1].x) / ((nodes[0].x - nodes[2].x) * (nodes[1].x - nodes[2].x)); 
+      value = (2.0 * p.x - n[0].x - n[1].x) / ((n[0].x - n[2].x) * (n[1].x - n[2].x)); 
     } else {
       std::cerr<<"aie"<<std::endl;
       abort();
@@ -260,17 +260,20 @@ public:
     }
   }
 
-  void setDOF(unsigned int& dc) { 
+  void setDOF(const std::vector<unsigned int>& gdof) { 
     if ((dof.size() != 0) 
         &&(m.size() != 0)) {
       std::cerr<<"DOF have already been set before..."<<std::endl;
       abort();
     }
-    unsigned int ndof = re->getNumberOfNodes();
-    for (unsigned int idof = 0; idof < ndof; ++idof, ++dc) {
-      dof.push_back(dc);
-      m[idof] = dc;
-    }
+    // Get the number of DOF
+    const unsigned int ndof = re->getNumberOfNodes();
+    assert(gdof.size() == ndof);
+    dof.resize(ndof);
+    for (unsigned int idof = 0; idof < ndof; ++idof) {
+      dof[idof] = gdof[idof];
+      m[idof] = gdof[idof];
+    } // end for idof
   }
 
   Point mapGlobal2Local(Point g) const {
@@ -706,19 +709,38 @@ int main(int argc, char *argv[]) {
 
   // Distribute the Degrees Of Freedoms (DOF)
   // TODO: need to come up with something better than this
-  unsigned int dofCounter = 0;
-  for (unsigned int iel = 0; iel < nel; ++iel) {
-    finiteElements[iel]->setDOF(dofCounter);
-    dofCounter--;
-  } // end for iel
-  dofCounter++;
+  //       DOFHandler class
+  unsigned int ndof = 0;
+  if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseLinear") {
+    ndof = nel + 1;
+    for (unsigned int iel = 0; iel < nel; ++iel) { 
+      std::vector<unsigned int> dof;
+      dof.push_back(iel);
+      dof.push_back(iel+1);
+      finiteElements[iel]->setDOF(dof);
+    } // end for iel
+  } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseQuadratic") {
+    ndof = 2 * nel + 1;
+    for (unsigned int iel = 0; iel < nel; ++iel) { 
+      std::vector<unsigned int> dof;
+      if (iel == 0) { 
+        dof.push_back(iel);
+      } else {
+        dof.push_back(2*iel-1);
+      }
+      dof.push_back(2*iel+1);
+      dof.push_back(2*iel+2);
+      finiteElements[iel]->setDOF(dof);
+    } // end for iel
+  } // end if type of basis functions
+  assert(ndof != 0);
 
   // Create global matrix and global rhs
-  std::vector<std::vector<double> > globalMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
-  std::vector<double> globalRHS(dofCounter, 0.0);
+  std::vector<std::vector<double> > globalMatrix(ndof, std::vector<double>(ndof, 0.0));
+  std::vector<double> globalRHS(ndof, 0.0);
   // Create mass and stiffness matrix
-  std::vector<std::vector<double> > StiffnessMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
-  std::vector<std::vector<double> > MassMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
+  std::vector<std::vector<double> > StiffnessMatrix(ndof, std::vector<double>(ndof, 0.0));
+  std::vector<std::vector<double> > MassMatrix(ndof, std::vector<double>(ndof, 0.0));
   // Create null vector and null matrix
   std::vector<std::vector<double> > nullMatrix;
   std::vector<double> nullVector;
@@ -745,7 +767,7 @@ int main(int argc, char *argv[]) {
     // compute local matrix and RHS
     std::vector<std::vector<double> > localMatrix;
     std::vector<double> localRHS; 
-    assembleLocal(feValues, localMatrix, localRHS, myFEM_BOTH_MATRIX_AND_VECTOR, &a, &q, &f, myFEM_MAX_DEBUG, std::cout);
+    assembleLocal(feValues, localMatrix, localRHS, myFEM_BOTH_MATRIX_AND_VECTOR, &a, &q, &f, myFEM_NO_DEBUG, std::cout);
     //assembleLocal(feValues, localMatrix, nullVector, myFEM_MATRIX_ONLY, &a, &q, NULL, myFEM_MAX_DEBUG, std::cout);
     //assembleLocal(feValues, nullMatrix, localRHS, myFEM_VECTOR_ONLY, NULL, NULL, &f, myFEM_MAX_DEBUG, std::cout);
     // compute local mass and stiffness matrices
@@ -755,7 +777,7 @@ int main(int argc, char *argv[]) {
     assembleLocal(feValues, localMassMatrix, nullVector, myFEM_MATRIX_ONLY, &aMass, &qMass, NULL, myFEM_NO_DEBUG, std::cout);
 
     // distribute local to global
-    distributeLocal2Global(feValues, localMatrix, localRHS, globalMatrix, globalRHS, myFEM_BOTH_MATRIX_AND_VECTOR, myFEM_MAX_DEBUG);
+    distributeLocal2Global(feValues, localMatrix, localRHS, globalMatrix, globalRHS, myFEM_BOTH_MATRIX_AND_VECTOR, myFEM_NO_DEBUG);
     std::cout<<"local matrix and local rhs\n";
     printMatrixAndVector(localMatrix, localRHS, myFEM_BOTH_MATRIX_AND_VECTOR, std::cout);
     // same thing for mass and stiffness
@@ -769,7 +791,7 @@ int main(int argc, char *argv[]) {
   } // end for iel
   std::cout<<"#### END ASSEMBLY ROUTINE ######\n";
 
-  if (nel <= 10) {
+  if (nel <= 2) {
     // Print out global matrix and global rhs
     std::cout<<"global matrix and global rhs\n";
     printMatrixAndVector(globalMatrix, globalRHS, myFEM_BOTH_MATRIX_AND_VECTOR, std::cout);
@@ -803,26 +825,24 @@ int main(int argc, char *argv[]) {
   std::cout<<"#### POSTPROCESSING ######\n";
   // Compute L2 norm of the numerical solution
   std::cout<<"solution L2 Norm = "<<computeNorm(MassMatrix, solutionVector, myFEM_L2_NORM)<<"\n"; 
-  std::cout<<"solution\n";
-  printMatrixAndVector(nullMatrix, solutionVector, myFEM_VECTOR_ONLY);
   
   // Compute exact solution
   // TODO: come up with something better than this
   //       need iterator over nodes
   //       DOFHandler class
-  std::vector<double> exactSolutionVector(dofCounter);
+  std::vector<double> exactSolutionVector(ndof);
   for (unsigned int iel = 0; iel < nel; ++iel) {
     std::vector<Point> supportPoints;
     supportPoints.push_back(startPoint+double(iel)/double(nel)*(endPoint-startPoint));
     supportPoints.push_back(startPoint+double(iel+1)/double(nel)*(endPoint-startPoint));
     //std::cout<<iel<<"  "<<supportPoints[0]<<"  "<<supportPoints[1]<<"\n";
     if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseLinear") {
-      exactSolutionVector[iel] = u(supportPoints[0]);
+      if (iel == 0) exactSolutionVector[iel] = u(supportPoints[0]);
       exactSolutionVector[iel+1] = u(supportPoints[1]);
     } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseQuadratic") {
-      exactSolutionVector[iel] = u(supportPoints[0]);
-      exactSolutionVector[iel+1] = u(supportPoints[1]);
-      exactSolutionVector[iel+2] = u((supportPoints[0] + supportPoints[1]) / 2.0);
+      if (iel == 0) exactSolutionVector[2*iel] = u(supportPoints[0]);
+      exactSolutionVector[2*iel+1] = u(supportPoints[1]);
+      exactSolutionVector[2*iel+2] = u((supportPoints[0] + supportPoints[1]) / 2.0);
     } else {
       std::cerr<<"mais qu'est-ce que tu fais la?\n";
       abort();
@@ -830,10 +850,16 @@ int main(int argc, char *argv[]) {
   } // end for iel
   // Get its L2 norm
   std::cout<<"exact solution L2 Norm = "<<computeNorm(MassMatrix, exactSolutionVector, myFEM_L2_NORM)<<"\n"; 
+  if (nel <= 2) {
+    std::cout<<"solution\n";
+    printMatrixAndVector(nullMatrix, solutionVector, myFEM_VECTOR_ONLY);
+    std::cout<<"exact solution\n";
+    printMatrixAndVector(nullMatrix, exactSolutionVector, myFEM_VECTOR_ONLY);
+  }
     
   // Compute exact error
   std::vector<double> exactErrorVector;
-  for (unsigned int idof = 0; idof < dofCounter; ++idof) {
+  for (unsigned int idof = 0; idof < ndof; ++idof) {
     exactErrorVector.push_back(solutionVector[idof] - exactSolutionVector[idof]);
   } // end for idof
   //std::cout<<"exact error\n";
@@ -846,7 +872,7 @@ int main(int argc, char *argv[]) {
 
   std::cout<<"basis functions = "<<referenceElement->getTypeOfBasisFunctions()<<"\n";
   std::cout<<"quadrature rule = "<<quadratureRule->getType()<<"\n";
-  std::cout<<"global number of DOF = "<<dofCounter<<"\n";
+  std::cout<<"global number of DOF = "<<ndof<<"\n";
 
   // Delete allocated memory
   delete feValues;
