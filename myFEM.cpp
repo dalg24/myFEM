@@ -305,11 +305,17 @@ double a(Point p) { return a(p.x); }
 double q(Point p) { return q(p.x); }
 double f(Point p) { return f(p.x); }
 double u(Point p) { return u(p.x); }
+double aMass(Point p) { return 0.0; }
+double qMass(Point p) { return 1.0; }
+double aStiffness(Point p) { return 1.0; }
+double qStiffness(Point p) { return 0.0; }
 
 std::vector<std::vector<double> > computeLocalMatrix(FEValues *feValues, 
     bool verbose = false, 
     std::ostream& os = std::cout,
-    unsigned int debugLevel = 1) {
+    unsigned int debugLevel = 1,
+    double (*aa)(Point) = &a,
+    double (*qq)(Point) = &q) {
   /** get quadrature points */
   std::vector<Point> quadraturePoints = feValues->getQuadraturePoints();
   const unsigned int nqp = quadraturePoints.size();
@@ -327,8 +333,8 @@ std::vector<std::vector<double> > computeLocalMatrix(FEValues *feValues,
   for (unsigned int iqp = 0; iqp < nqp; ++iqp) {
     for (unsigned int idof = 0; idof < ndof; ++idof) {
       for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
-        localMatrix[idof][jdof] += ( a(quadraturePoints[iqp]) * feValues->getShapeDx(idof, iqp) * feValues->getShapeDx(jdof, iqp)
-                                     + q(quadraturePoints[iqp]) * feValues->getShapeValue(idof, iqp) * feValues->getShapeValue(jdof, iqp)
+        localMatrix[idof][jdof] += ( aa(quadraturePoints[iqp]) * feValues->getShapeDx(idof, iqp) * feValues->getShapeDx(jdof, iqp)
+                                     + qq(quadraturePoints[iqp]) * feValues->getShapeValue(idof, iqp) * feValues->getShapeValue(jdof, iqp)
                                    ) * feValues->getDeterminantOfJacobianTimesWeight(iqp);
         if ((verbose)
             && (debugLevel > 6)) {
@@ -431,20 +437,58 @@ void printMatrixAndVector(std::vector<std::vector<double> > Matrix,
   } // end for idof
 }
 
+double computeL2Norm(std::vector<std::vector<double> > MassMatrix,
+    std::vector<double> Vector) {
+  double L2Norm = 0.0;
+  unsigned int ndof = Vector.size();
+  for (unsigned int idof = 0; idof < ndof; ++idof) {
+    for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
+      L2Norm += MassMatrix[idof][jdof] * Vector[jdof] * Vector[jdof];
+    } // end for jdof
+  } // end for idof
+  return L2Norm;
+}
+
 int main(int argc, char *argv[]) {
 
   { /** nouveau test */
-  std::cout<<"#### BEGIN ######\n";
   unsigned int nel = 10;
+  std::string basisType = "PiecewiseLinear";
+  std::string quadType = "GaussianTwoPoints";
+  std::string errorMessage = std::string("Error: Bad command line arguments\n")
+                           + std::string("Usage: argv[0] number_of_elements type_of_basis_functions type_of_quadrature_rule\n")
+                           + std::string("Where: number_of_elements must be a positive integer\n")
+                           + std::string("       type_of_basis_functions must be 1 for PiecewiseLinear or 2 for PiecewiseQuadratici\n")
+                           + std::string("       type_of_quadrature_rule must be 2 for GaussianTwoPoints or 3 for GaussianThreePoints\n");
   if (argc > 1) {
     nel = atoi(argv[1]);
   }
-  std::cout<<"number of elements = "<<nel<<"\n";
+  if (argc > 2) {
+    if (atoi(argv[2]) == 1) { 
+      basisType = "PiecewiseLinear"; 
+    } else if (atoi(argv[2]) == 2) {
+      basisType = "PiecewiseQuadratic"; 
+    } else {
+      std::cerr<<errorMessage<<std::endl;
+      abort();
+    }
+  }
+  if (argc > 3) {
+    if (atoi(argv[3]) == 2) { 
+      quadType = "GaussianTwoPoints"; 
+    } else if (atoi(argv[3]) == 3) {
+      quadType = "GaussianThreePoints"; 
+    } else {
+      std::cerr<<errorMessage<<std::endl;
+      abort();
+    }
+  }
 
+  std::cout<<"#### BEGIN ######\n";
+  std::cout<<"number of elements = "<<nel<<"\n";
   // construct nel elements
-  ReferenceElement referenceElement("PiecewiseLinear");
-  //ReferenceElement referenceElement("PiecewiseQuadratic");
-  std::cout<<"basis functions = "<<referenceElement.getTypeOfBasisFunctions()<<"\n";
+  ReferenceElement *referenceElement = new ReferenceElement(basisType);
+  std::cout<<"basis functions = "<<referenceElement->getTypeOfBasisFunctions()<<"\n";
 
   std::vector<FiniteElement> finiteElements;
   Point startPoint(0.0); Point endPoint(1.0);
@@ -453,7 +497,7 @@ int main(int argc, char *argv[]) {
     supportPoints.push_back(startPoint+double(iel)/double(nel)*(endPoint-startPoint));
     supportPoints.push_back(startPoint+double(iel+1)/double(nel)*(endPoint-startPoint));
     //std::cout<<iel<<"  "<<supportPoints[0]<<"  "<<supportPoints[1]<<"\n";
-    finiteElements.push_back(FiniteElement(supportPoints, &referenceElement));
+    finiteElements.push_back(FiniteElement(supportPoints, referenceElement));
   } // end for iel
 
   // distribute the Degrees Of Freedoms (DOF)
@@ -467,14 +511,20 @@ int main(int argc, char *argv[]) {
 
   // create global matrix and global rhs
   std::vector<std::vector<double> > globalMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
+  std::vector<std::vector<double> > gStiffnessMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
+  std::vector<std::vector<double> > gMassMatrix(dofCounter, std::vector<double>(dofCounter, 0.0));
   std::vector<double> globalRHS(dofCounter, 0.0);
 
-  GaussianTwoPoints quadratureRule;
-  //GaussianThreePoints quadratureRule;
-  std::cout<<"quadrature rule = "<<quadratureRule.getType()<<"\n";
+  QuadratureRule *quadratureRule;
+  if (quadType == "GaussianTwoPoints") {
+    quadratureRule = new GaussianTwoPoints;
+  } else if (quadType == "GaussianThreePoints") {
+    quadratureRule = new GaussianThreePoints;
+  }
+  std::cout<<"quadrature rule = "<<quadratureRule->getType()<<"\n";
   UpdateFlags updateFlags;
 
-  FEValues feValues(NULL, &quadratureRule, updateFlags); 
+  FEValues feValues(NULL, quadratureRule, updateFlags); 
   for (unsigned int iel = 0; iel < nel; ++iel) {
   std::cout<<"##########\n";
     std::cout<<"element #"<<iel<<"\n";
@@ -483,6 +533,8 @@ int main(int argc, char *argv[]) {
 
     // compute local matrix
     std::vector<std::vector<double> > localMatrix = computeLocalMatrix(&feValues, false, std::cout, 5);
+    std::vector<std::vector<double> > lStiffnessMatrix = computeLocalMatrix(&feValues, false, std::cout, 5, &aStiffness, &qStiffness);
+    std::vector<std::vector<double> > lMassMatrix = computeLocalMatrix(&feValues, false, std::cout, 5, &aMass, &aStiffness);
 
     // compute local rhs
     std::vector<double> localRHS = computeLocalRHS(&feValues, false, std::cout, 5);
@@ -495,10 +547,12 @@ int main(int argc, char *argv[]) {
     std::cout<<idof<<" -> "<<dofMap[idof]<<"\n";
   } // end for idof
 
-    // print out local matrix and local rhs and distribute to global
+    // distribute local to global
     for (unsigned int idof = 0; idof < ndof; ++idof) {
       for (unsigned int jdof = 0; jdof < ndof; ++jdof) {
         globalMatrix[dofMap[idof]][dofMap[jdof]] += localMatrix[idof][jdof];
+        gStiffnessMatrix[dofMap[idof]][dofMap[jdof]] += lStiffnessMatrix[idof][jdof];
+        gMassMatrix[dofMap[idof]][dofMap[jdof]] += lMassMatrix[idof][jdof];
       } // end for jdof
       globalRHS[dofMap[idof]] += localRHS[idof];
     } // end for idof
@@ -514,23 +568,20 @@ int main(int argc, char *argv[]) {
   //std::cout<<"global matrix and global rhs\n";
   //printMatrixAndRHS(globalMatrix, globalRHS);
 
+  // print matrix and RHS to files to check with matlab
   std::fstream foutMatrix;
   std::fstream foutRHS;
   foutMatrix.open("matrix.dat", std::fstream::out);
   foutRHS.open("rhs.dat", std::fstream::out);
   printMatrixAndVector(globalMatrix, std::vector<double>(), MATRIX_ONLY, foutMatrix, 9, 5);
   printMatrixAndVector(std::vector<std::vector<double> >(), globalRHS, VECTOR_ONLY, foutRHS, 9, 5);
-  /*  
-  for (unsigned int idof = 0; idof < dofCounter; ++idof) {
-    for (unsigned int jdof = 0; jdof < dofCounter; ++jdof) {
-      foutMatrix<<std::setw(9)<<std::setprecision(5)<<globalMatrix[idof][jdof]<<"  ";
-    } // end for jdof
-    foutMatrix<<"\n";
-    foutRHS<<std::setprecision(5)<<globalRHS[idof]<<"\n";
-  } // end for idof
-  */
   foutMatrix.close();
   foutRHS.close();
+
+  //std::cout<<"stiffness matrix\n";
+  //printMatrixAndVector(gStiffnessMatrix, std::vector<double>(), MATRIX_ONLY, std::cout);
+  //std::cout<<"mass matrix\n";
+  //printMatrixAndVector(gMassMatrix, std::vector<double>(), MATRIX_ONLY, std::cout);
 
 #ifdef EBILE
   std::cout<<"tu te crois malin hein? gros ebile :D\n";
@@ -586,10 +637,10 @@ int main(int argc, char *argv[]) {
   status[NUMERIC] = umfpack_di_numeric(pColCC, iRowCC, iValCC, Symbolic, &Numeric, Control, Info);
   status[SOLVE] = umfpack_di_solve(sys, pColCC, iRowCC, iValCC, solVec, rhsVec, Numeric, Control, Info);
 
-  std::cout<<"solution\n";
   std::vector<double> solVecTMP(dofCounter);
   std::copy(solVec, solVec + dofCounter, solVecTMP.begin());
-  printMatrixAndVector(std::vector<std::vector<double> >(), solVecTMP, VECTOR_ONLY, std::cout);
+  //std::cout<<"solution\n";
+  //printMatrixAndVector(std::vector<std::vector<double> >(), solVecTMP, VECTOR_ONLY, std::cout);
   
   /** compute exact error */
   // TODO: come up with something better than this
@@ -599,10 +650,10 @@ int main(int argc, char *argv[]) {
     supportPoints.push_back(startPoint+double(iel)/double(nel)*(endPoint-startPoint));
     supportPoints.push_back(startPoint+double(iel+1)/double(nel)*(endPoint-startPoint));
     //std::cout<<iel<<"  "<<supportPoints[0]<<"  "<<supportPoints[1]<<"\n";
-    if (referenceElement.getTypeOfBasisFunctions() == "PiecewiseLinear") {
+    if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseLinear") {
       exactSolVec[iel] = u(supportPoints[0]);
       exactSolVec[iel+1] = u(supportPoints[1]);
-    } else if (referenceElement.getTypeOfBasisFunctions() == "PiecewiseQuadratic") {
+    } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseQuadratic") {
       exactSolVec[iel] = u(supportPoints[0]);
       exactSolVec[iel+1] = u(supportPoints[1]);
       exactSolVec[iel+2] = u((supportPoints[0] + supportPoints[1]) / 2.0);
@@ -613,11 +664,14 @@ int main(int argc, char *argv[]) {
   } // end for iel
 
   std::vector<double> errVec;
-  std::cout<<"exact error\n";
   for (unsigned int idof = 0; idof < dofCounter; ++idof) {
     errVec.push_back(solVec[idof] - exactSolVec[idof]);
   } // end for idof
-  printMatrixAndVector(std::vector<std::vector<double> >(), errVec, VECTOR_ONLY, std::cout);
+  //std::cout<<"exact error\n";
+  //printMatrixAndVector(std::vector<std::vector<double> >(), errVec, VECTOR_ONLY, std::cout);
+
+  double errL2Norm = computeL2Norm(gMassMatrix, errVec);
+  std::cout<<"error L2 Norm = "<<errL2Norm<<"\n"; 
 
   std::cout<<"#### END ######\n";
   }
