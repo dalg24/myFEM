@@ -127,6 +127,18 @@ public:
   }
 }; // end class GaussianThreePoints
 
+class GaussianFourPoints : public QuadratureRule {
+public:
+  GaussianFourPoints() {
+    points.push_back(Point(-sqrt((3.0 - 2.0 * sqrt(6.0/5.0)) / 7.0))); weights.push_back((18.0 + sqrt(30)) / 36.0);
+    points.push_back(Point(+sqrt((3.0 - 2.0 * sqrt(6.0/5.0)) / 7.0))); weights.push_back((18.0 + sqrt(30)) / 36.0);
+    points.push_back(Point(-sqrt((3.0 + 2.0 * sqrt(6.0/5.0)) / 7.0))); weights.push_back((18.0 - sqrt(30)) / 36.0);
+    points.push_back(Point(+sqrt((3.0 + 2.0 * sqrt(6.0/5.0)) / 7.0))); weights.push_back((18.0 - sqrt(30)) / 36.0);
+    sp.push_back(Point(-1.0)); sp.push_back(Point(1.0));
+    type = "GaussianFourPoints";
+  }
+}; // end class GaussianThreePoints
+
 enum Exception_t { myFEM_DOF_OUT_OF_RANGE_EXCEPTION, myFEM_INVALID_INPUT_STRING_EXCEPTION };
 ////////////////////////// SHAPE FUNCTIONS //////////////////////////////////////
 class BasisFunctions {
@@ -720,6 +732,8 @@ int main(int argc, char *argv[]) {
       quadType = "GaussianTwoPoints"; 
     } else if (atoi(argv[3]) == 3) {
       quadType = "GaussianThreePoints"; 
+    } else if (atoi(argv[3]) == 4) {
+      quadType = "GaussianFourPoints"; 
     } else {
       std::cerr<<errorMessage<<std::endl;
       abort();
@@ -812,6 +826,8 @@ int main(int argc, char *argv[]) {
     quadratureRule = new GaussianTwoPoints;
   } else if (quadType == "GaussianThreePoints") {
     quadratureRule = new GaussianThreePoints;
+  } else if (quadType == "GaussianFourPoints") {
+    quadratureRule = new GaussianFourPoints;
   } else {
     throw myFEM_INVALID_INPUT_STRING_EXCEPTION;
   }
@@ -995,19 +1011,19 @@ int main(int argc, char *argv[]) {
   delete pp;
   }
 
-  if (false)
+  if (true)
   { /** test basis functions */
   // create a basis of shape functions
   std::vector<Point> dummySupportPoints;
-  dummySupportPoints.push_back(Point(-1.0));
-  dummySupportPoints.push_back(Point(1.0));
+  dummySupportPoints.push_back(Point(0.0));
+  dummySupportPoints.push_back(Point(0.5));
   //BasisFunctions *bf = new PiecewiseLinear(dummySupportPoints);
   //BasisFunctions *bf = new PiecewiseQuadratic(dummySupportPoints);
   BasisFunctions *bf = new PiecewiseCubic(dummySupportPoints);
 
   // fill vector of points
   std::vector<Point> p;
-  const unsigned int np = 51;
+  const unsigned int np = 151;
   const unsigned int ndof = bf->getNumberOfNodes();
   for (unsigned int ip = 0; ip < np; ++ip)
     p.push_back(dummySupportPoints[0]+ip/double(np-1)*(dummySupportPoints[1]-dummySupportPoints[0]));
