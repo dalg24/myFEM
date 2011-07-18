@@ -1,0 +1,24 @@
+CC = g++
+SRC = myFEM.cpp
+EXE = myFEM.exe
+
+I = -I/usr/include/suitesparse
+
+L = -L/usr/lib
+
+CFLAGS = -lm -lamd -lumfpack -lmetis -lblas
+
+CDEFS = -DEBILE
+LDFLAGS =
+
+all:
+	${CC} $(CDEFS) $(I) -c ${SRC} 
+	${CC} *.o $(L) $(CFLAGS) $(LDFLAGS) -o ${EXE}
+
+clean:
+	rm *.o
+
+cleanall:
+	rm *.o
+	rm -f ${EXE}
+
