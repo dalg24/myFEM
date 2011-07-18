@@ -9,6 +9,13 @@
 #include <cmath>
 #include "umfpack.h"
 
+// TODO: templatize dimension
+//       DOFHandler class
+//       boundary conditions
+enum Exception_t { myFEM_DOF_OUT_OF_RANGE_EXCEPTION, myFEM_INVALID_INPUT_STRING_EXCEPTION, myFEM_DIVIDE_BY_ZERO_EXCEPTION };
+enum DebugLevel_t { myFEM_NO_DEBUG, myFEM_MIN_DEBUG, myFEM_MED_DEBUG, myFEM_MAX_DEBUG };
+enum Object_t { myFEM_BOTH_MATRIX_AND_VECTOR, myFEM_MATRIX_ONLY, myFEM_VECTOR_ONLY };
+enum Norm_t { myFEM_L1_NORM, myFEM_L2_NORM, myFEM_H1_NORM };
 ////////////////////////// POINT //////////////////////////////////////
 class Point { 
 public:
@@ -18,7 +25,7 @@ public:
   Point& operator=(const Point& p) { if (this==&p) return *this; x = p.x; return *this; }
   friend Point operator+(const Point& l, const Point& r) { Point p; p.x = l.x + r.x; return p;}
   friend Point operator-(const Point& l, const Point& r) { Point p; p.x = l.x - r.x; return p;}
-  friend Point operator/(const Point& l, const double r) { Point p; p.x = l.x / r; return p;}
+  friend Point operator/(const Point& l, const double r) { if (r == 0) throw myFEM_DIVIDE_BY_ZERO_EXCEPTION; Point p; p.x = l.x / r; return p;}
   friend Point operator*(const double l, const Point& r) { Point p; p.x = l * r.x; return p;}
   friend Point operator*(const Point& l, const double r) { Point p; p.x = l.x * r; return p;}
   friend std::ostream& operator<<(std::ostream& os, const Point& p) { os<<"( "<<p.x<<" )"; return os; }
@@ -150,9 +157,23 @@ public:
     sp.push_back(Point(-1.0)); sp.push_back(Point(1.0));
     type = "GaussianFivePoints";
   }
-}; // end class GaussianThreePoints
+}; // end class GaussianFivePoints
 
-enum Exception_t { myFEM_DOF_OUT_OF_RANGE_EXCEPTION, myFEM_INVALID_INPUT_STRING_EXCEPTION };
+QuadratureRule* makeNewPointerToQuadratureRule(const std::string& quadType) {
+  QuadratureRule* quadratureRule;
+  if (quadType == "GaussianTwoPoints") {
+    quadratureRule = new GaussianTwoPoints();
+  } else if (quadType == "GaussianThreePoints") {
+    quadratureRule = new GaussianThreePoints();
+  } else if (quadType == "GaussianFourPoints") {
+    quadratureRule = new GaussianFourPoints();
+  } else if (quadType == "GaussianFivePoints") {
+    quadratureRule = new GaussianFivePoints();
+  } else {
+    throw myFEM_INVALID_INPUT_STRING_EXCEPTION;
+  }
+  return quadratureRule;
+}
 ////////////////////////// SHAPE FUNCTIONS //////////////////////////////////////
 class BasisFunctions {
 public:
@@ -168,8 +189,8 @@ public:
 
   std::vector<Point> getSupportPoints() const { std::vector<Point> sp; sp.push_back(n[0]); sp.push_back(n[1]); return sp;}
 
-  virtual double getVal(unsigned int, Point) const = 0;
-  virtual double getDx(unsigned int, Point) const = 0;
+  virtual double getVal(unsigned int, const Point&) const = 0;
+  virtual double getDx(unsigned int, const Point&) const = 0;
 
 protected:
   std::vector<Point> n;
@@ -185,7 +206,7 @@ public:
     t = "PiecewiseLinear"; 
   }
 
-  double getVal(unsigned int idof, Point p) const {
+  double getVal(unsigned int idof, const Point& p) const {
     assert(n[0].x <= p.x); assert(p.x <= n[1].x);
     double value;
     if (idof == 0) {
@@ -198,7 +219,7 @@ public:
     return value;
   }
 
-  double getDx(unsigned int idof, Point p) const {
+  double getDx(unsigned int idof, const Point& p) const {
     assert(n[0].x <= p.x); assert(p.x <= n[1].x);
     double value;
     if (idof == 0) {
@@ -222,7 +243,7 @@ public:
     t = "PiecewiseQuadratic"; 
   }
 
-  double getVal(unsigned int idof, Point p) const {
+  double getVal(unsigned int idof, const Point& p) const {
     assert(n[0].x <= p.x); assert(p.x <= n[1].x);
     double value;
     if (idof == 0) {
@@ -237,7 +258,7 @@ public:
     return value;
   }
 
-  double getDx(unsigned int idof, Point p) const {
+  double getDx(unsigned int idof, const Point& p) const {
     assert(n[0].x <= p.x); assert(p.x <= n[1].x);
     double value;
     if (idof == 0) {
@@ -264,7 +285,7 @@ public:
     t = "PiecewiseCubic"; 
   }
 
-  double getVal(unsigned int idof, Point p) const {
+  double getVal(unsigned int idof, const Point& p) const {
     assert(n[0].x <= p.x); assert(p.x <= n[1].x);
     double value;
     if (idof == 0) {
@@ -281,7 +302,7 @@ public:
     return value;
   }
 
-  double getDx(unsigned int idof, Point p) const {
+  double getDx(unsigned int idof, const Point& p) const {
     assert(n[0].x <= p.x); assert(p.x <= n[1].x);
     double value;
     if (idof == 0) {
@@ -299,6 +320,7 @@ public:
   }
 }; // end class PiecewiseCubic
 
+// TODO: quartic shape functions need debug
 class PiecewiseQuartic : public BasisFunctions {
 public:             
   PiecewiseQuartic(std::vector<Point> sp) { 
@@ -311,7 +333,7 @@ public:
     t = "PiecewiseQuartic"; 
   }
 
-  double getVal(unsigned int idof, Point p) const {
+  double getVal(unsigned int idof, const Point& p) const {
     assert(n[0].x <= p.x); assert(p.x <= n[1].x);
     double value;
     if (idof == 0) {
@@ -330,7 +352,7 @@ public:
     return value;
   }
 
-  double getDx(unsigned int idof, Point p) const {
+  double getDx(unsigned int idof, const Point& p) const {
     assert(n[0].x <= p.x); assert(p.x <= n[1].x);
     double value;
     if (idof == 0) {
@@ -353,7 +375,8 @@ public:
 ////////////////////////// REFERENCE ELEMENT //////////////////////////////////////
 class ReferenceElement {
 public:
-  ReferenceElement(std::string s = "PiecewiseLinear") { 
+  ReferenceElement(const std::string& s = "PiecewiseLinear") { 
+    std::vector<Point> sp; 
     sp.push_back(Point(-1.0));
     sp.push_back(Point(1.0));
     if (s == "PiecewiseLinear") {
@@ -373,13 +396,12 @@ public:
   unsigned int getNumberOfNodes() const { return bf->getNumberOfNodes(); }
   Point getNode(unsigned int idof) const { return bf->getNode(idof); }
   std::vector<Point> getNodes() const { return bf->getNodes(); }
-  std::vector<Point> getSupportPoints() const { return sp; }
+  std::vector<Point> getSupportPoints() const { return bf->getSupportPoints(); }
   double getVal(unsigned int idof, Point p) const { return bf->getVal(idof, p); }
   double getDx(unsigned int idof, Point p) const { return bf->getDx(idof, p); }
   std::string getTypeOfBasisFunctions() const { return bf->getType(); }
 
 protected:
-  std::vector<Point> sp; 
   BasisFunctions *bf;
 }; // end class ReferenceElement
 
@@ -503,8 +525,6 @@ double qMass(Point p) { return 1.0; }
 double aStiffness(Point p) { return 1.0; }
 double qStiffness(Point p) { return 0.0; }
 
-enum DebugLevel_t { myFEM_NO_DEBUG, myFEM_MIN_DEBUG, myFEM_MED_DEBUG, myFEM_MAX_DEBUG };
-enum Object_t { myFEM_BOTH_MATRIX_AND_VECTOR, myFEM_MATRIX_ONLY, myFEM_VECTOR_ONLY };
 void assembleLocal(FEValues *feValues, 
     std::vector<std::vector<double> >& localMatrix,
     std::vector<double>& localVector,
@@ -754,7 +774,6 @@ std::vector<double> solveMatrixTimesXEqualsRHS(const std::vector<std::vector<dou
 }
 
 // TODO: replace prefix myFEM_ by namespace
-enum Norm_t { myFEM_L1_NORM, myFEM_L2_NORM, myFEM_H1_NORM };
 double computeNorm(const std::vector<std::vector<double> >& MassMatrix,
     const std::vector<double>& Vector,
     Norm_t normType = myFEM_L2_NORM,
@@ -779,21 +798,22 @@ double computeNorm(const std::vector<std::vector<double> >& MassMatrix,
 int main(int argc, char *argv[]) {
 
   { /** nouveau test */
+  // Default values
   unsigned int nel = 10;
   std::string basisType = "PiecewiseLinear";
-  std::string quadType = "GaussianThreePoints";
+  std::string quadType = "GaussianTwoPoints";
   //TODO: make command line argument passing smarter than this
-  std::string errorMessage = std::string("Error: Bad command line arguments\n")
-                           + std::string("Usage: argv[0] number_of_elements type_of_basis_functions type_of_quadrature_rule\n")
-                           + std::string("Where: number_of_elements must be a positive integer\n")
-                           + std::string("       type_of_basis_functions must be 1 for PiecewiseLinear or 2 for PiecewiseQuadratici\n")
-                           + std::string("       type_of_quadrature_rule must be 2 for GaussianTwoPoints or 3 for GaussianThreePoints\n");
-  /*
-  for (int i = 0; i < argc; ++i) {
-    std::cout<<argv[i]<<" ";
-  }
-  std::cout<<"\n";
-  */
+  std::string errorMessage = std::string("Usage: argv[0] number_of_elements type_of_basis_functions type_of_quadrature_rule\n")
+                           + std::string("number_of_elements -> a positive integer [default value is 10]\n")
+                           + std::string("type_of_basis_functions -> [1] for PiecewiseLinear\n")
+                           + std::string("                        -> 2 for PiecewiseQuadratic\n")
+                           + std::string("                        -> 3 for PiecewiseCubic\n")
+                           + std::string("                        -> 4 for PiecewiseQuartic\n")
+                           + std::string("type_of_quadrature_rule -> [2] for GaussianTwoPoints\n")
+                           + std::string("                        -> 3 for GaussianThreePoints\n")
+                           + std::string("                        -> 4 for GaussianFourPoints\n")
+                           + std::string("                        -> 5 for GaussianFivePoints\n");
+  //for (int i = 0; i < argc; ++i) std::cout<<argv[i]<<" "; std::cout<<"\n";
   if (argc > 1) {
     nel = atoi(argv[1]);
   }
@@ -825,12 +845,8 @@ int main(int argc, char *argv[]) {
       abort();
     }
   }
-  //std::cout<<basisType<<std::endl;
-  //std::cout<<quadType<<std::endl;
-  //abort();
 
   std::cout<<"#### BEGIN ######\n";
-  std::cout<<"number of elements = "<<nel<<"\n";
   // Construct nel elements
   std::cout<<"#### BUILD FINITE ELEMENTS ######\n";
   std::vector<FiniteElement*> finiteElements;
@@ -838,7 +854,7 @@ int main(int argc, char *argv[]) {
   ReferenceElement *referenceElement = new ReferenceElement(basisType);
 
   // Create triangualtion embryo
-  // TODO: move towards triangulation class
+  // TODO: move towards Triangulation class
   Point startPoint(0.0); Point endPoint(1.0);
   for (unsigned int iel = 0; iel < nel; ++iel) {
     std::vector<Point> supportPoints;
@@ -923,19 +939,7 @@ int main(int argc, char *argv[]) {
   std::vector<double> nullVector;
 
   // Create pointer to a quadrature rule
-  QuadratureRule *quadratureRule;
-  if (quadType == "GaussianTwoPoints") {
-    quadratureRule = new GaussianTwoPoints;
-  } else if (quadType == "GaussianThreePoints") {
-    quadratureRule = new GaussianThreePoints;
-  } else if (quadType == "GaussianFourPoints") {
-    quadratureRule = new GaussianFourPoints;
-  } else if (quadType == "GaussianFivePoints") {
-    quadratureRule = new GaussianFivePoints;
-  } else {
-    abort();
-    throw myFEM_INVALID_INPUT_STRING_EXCEPTION;
-  }
+  QuadratureRule *quadratureRule = makeNewPointerToQuadratureRule(quadType);
 
   std::cout<<"#### ASSEMBLE MATRIX AND RHS ######\n";
   UpdateFlags updateFlags;
@@ -1077,9 +1081,10 @@ int main(int argc, char *argv[]) {
   std::cout<<"error L2 Norm = "<<computeNorm(MassMatrix, exactErrorVector, myFEM_L2_NORM)<<"\n"; 
   std::cout<<"error H1 Norm = "<<computeNorm(MassMatrix, exactErrorVector, myFEM_H1_NORM, StiffnessMatrix)<<"\n"; 
 
+  std::cout<<"number of elements = "<<nel<<"\n";
+  std::cout<<"number of DOF = "<<ndof<<"\n";
   std::cout<<"basis functions = "<<referenceElement->getTypeOfBasisFunctions()<<"\n";
   std::cout<<"quadrature rule = "<<quadratureRule->getType()<<"\n";
-  std::cout<<"global number of DOF = "<<ndof<<"\n";
 
   // Delete allocated memory
   delete feValues;
