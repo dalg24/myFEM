@@ -1,6 +1,6 @@
+#include <iomanip>
 #include <iostream>
 #include <fstream>
-#include <iomanip>
 #include <vector>
 #include <map>
 #include <string>
@@ -88,96 +88,116 @@ protected:
   std::vector<Cell> lc;
 }; // end class Triangulation
 
-class DOFHandler { }; // end class DOFHandler
-
 ////////////////////////// QUADRATURE RULE //////////////////////////////////////
 class QuadratureRule {
 public:
-  QuadratureRule() : type("notype") { }
+  QuadratureRule() : t("notype"), m(0) { }
   ~QuadratureRule() { }
-  QuadratureRule(const QuadratureRule& qr) : points(qr.points), weights(qr.weights) { }
-  QuadratureRule& operator=(const QuadratureRule& qr) { if (this==&qr) return *this; points = qr.points; weights = qr.weights; return *this; }
+  QuadratureRule(const QuadratureRule& qr) : qp(qr.qp), w(qr.w) { }
+  QuadratureRule& operator=(const QuadratureRule& qr) { if (this==&qr) return *this; qp = qr.qp; w = qr.w; return *this; }
 
-  unsigned int getNumberOfQuadraturePoints() const { assert(points.size()==weights.size()); return points.size(); }
-  Point getQuadraturePoint(unsigned int iqp) const { return points[iqp]; }
-  std::vector<Point> getQuadraturePoints() const { return points; }
-  double getWeight(unsigned int iqp) const { return weights[iqp]; }
-  std::vector<double> getWeights() const { return weights; }
+  unsigned int getNumberOfQuadraturePoints() const { assert(qp.size()==w.size()); return qp.size(); }
+  Point getQuadraturePoint(unsigned int iqp) const { return qp[iqp]; }
+  std::vector<Point> getQuadraturePoints() const { return qp; }
+  double getWeight(unsigned int iqp) const { return w[iqp]; }
+  std::vector<double> getWeights() const { return w; }
   std::vector<Point> getSupportPoints() const { return sp; }
-  std::string getType() const { return type; }
+  std::string getType() const { return t; }
+  unsigned int getMaxOrder() const { return m; }
 
 protected:
-  std::vector<Point> points;
-  std::vector<double> weights;
+  std::vector<Point> qp;
+  std::vector<double> w;
   std::vector<Point> sp;
-  std::string type;
+  std::string t;
+  unsigned int m;
 }; // end class QuadratureRule
 
 class GaussianTwoPoints : public QuadratureRule {
 public:
   GaussianTwoPoints() {
-    points.push_back(Point(-1.0/sqrt(3.0))); weights.push_back(1.0);
-    points.push_back(Point(+1.0/sqrt(3.0))); weights.push_back(1.0);
+    qp.push_back(Point(-1.0/sqrt(3.0))); w.push_back(1.0);
+    qp.push_back(Point(+1.0/sqrt(3.0))); w.push_back(1.0);
     sp.push_back(Point(-1.0)); sp.push_back(Point(1.0));
-    type = "GaussianTwoPoints";
+    t = "GaussianTwoPoints";
+    m = 3;
   }
 }; // end class GaussianTwoPoints
 
 class GaussianThreePoints : public QuadratureRule {
 public:
   GaussianThreePoints() {
-    points.push_back(Point(0.0)); weights.push_back(8.0 / 9.0);
-    points.push_back(Point(-sqrt(3.0/5.0))); weights.push_back(5.0/9.0);
-    points.push_back(Point(+sqrt(3.0/5.0))); weights.push_back(5.0/9.0);
+    qp.push_back(Point(0.0)); w.push_back(8.0 / 9.0);
+    qp.push_back(Point(-sqrt(3.0/5.0))); w.push_back(5.0/9.0);
+    qp.push_back(Point(+sqrt(3.0/5.0))); w.push_back(5.0/9.0);
     sp.push_back(Point(-1.0)); sp.push_back(Point(1.0));
-    type = "GaussianThreePoints";
+    t = "GaussianThreePoints";
+    m = 5;
   }
 }; // end class GaussianThreePoints
 
 class GaussianFourPoints : public QuadratureRule {
 public:
   GaussianFourPoints() {
-    points.push_back(Point(-sqrt((3.0-2.0*sqrt(6.0/5.0))/7.0))); weights.push_back((18.0+sqrt(30.0))/36.0);
-    points.push_back(Point(+sqrt((3.0-2.0*sqrt(6.0/5.0))/7.0))); weights.push_back((18.0+sqrt(30.0))/36.0);
-    points.push_back(Point(-sqrt((3.0+2.0*sqrt(6.0/5.0))/7.0))); weights.push_back((18.0-sqrt(30.0))/36.0);
-    points.push_back(Point(+sqrt((3.0+2.0*sqrt(6.0/5.0))/7.0))); weights.push_back((18.0-sqrt(30.0))/36.0);
+    qp.push_back(Point(-sqrt((3.0-2.0*sqrt(6.0/5.0))/7.0))); w.push_back((18.0+sqrt(30.0))/36.0);
+    qp.push_back(Point(+sqrt((3.0-2.0*sqrt(6.0/5.0))/7.0))); w.push_back((18.0+sqrt(30.0))/36.0);
+    qp.push_back(Point(-sqrt((3.0+2.0*sqrt(6.0/5.0))/7.0))); w.push_back((18.0-sqrt(30.0))/36.0);
+    qp.push_back(Point(+sqrt((3.0+2.0*sqrt(6.0/5.0))/7.0))); w.push_back((18.0-sqrt(30.0))/36.0);
     sp.push_back(Point(-1.0)); sp.push_back(Point(1.0));
-    type = "GaussianFourPoints";
+    t = "GaussianFourPoints";
+    m = 7;
   }
 }; // end class GaussianFourPoints
 
 class GaussianFivePoints : public QuadratureRule {
 public:
   GaussianFivePoints() {
-    points.push_back(Point(0.0)); weights.push_back(128.0 / 225.0);
-    points.push_back(Point(-1.0/3.0*sqrt((5.0-2.0*sqrt(10.0/7.0))))); weights.push_back((322.0+13.0*sqrt(70.))/900.0);
-    points.push_back(Point(+1.0/3.0*sqrt((5.0-2.0*sqrt(10.0/7.0))))); weights.push_back((322.0+13.0*sqrt(70.))/900.0);
-    points.push_back(Point(-1.0/3.0*sqrt((5.0+2.0*sqrt(10.0/7.0))))); weights.push_back((322.0-13.0*sqrt(70.))/900.0);
-    points.push_back(Point(+1.0/3.0*sqrt((5.0+2.0*sqrt(10.0/7.0))))); weights.push_back((322.0-13.0*sqrt(70.))/900.0);
+    qp.push_back(Point(0.0)); w.push_back(128.0 / 225.0);
+    qp.push_back(Point(-1.0/3.0*sqrt((5.0-2.0*sqrt(10.0/7.0))))); w.push_back((322.0+13.0*sqrt(70.))/900.0);
+    qp.push_back(Point(+1.0/3.0*sqrt((5.0-2.0*sqrt(10.0/7.0))))); w.push_back((322.0+13.0*sqrt(70.))/900.0);
+    qp.push_back(Point(-1.0/3.0*sqrt((5.0+2.0*sqrt(10.0/7.0))))); w.push_back((322.0-13.0*sqrt(70.))/900.0);
+    qp.push_back(Point(+1.0/3.0*sqrt((5.0+2.0*sqrt(10.0/7.0))))); w.push_back((322.0-13.0*sqrt(70.))/900.0);
     sp.push_back(Point(-1.0)); sp.push_back(Point(1.0));
-    type = "GaussianFivePoints";
+    t = "GaussianFivePoints";
+    m = 9;
   }
 }; // end class GaussianFivePoints
 
-QuadratureRule* makeNewPointerToQuadratureRule(const std::string& quadType) {
-  QuadratureRule* quadratureRule;
-  if (quadType == "GaussianTwoPoints") {
-    quadratureRule = new GaussianTwoPoints();
-  } else if (quadType == "GaussianThreePoints") {
-    quadratureRule = new GaussianThreePoints();
-  } else if (quadType == "GaussianFourPoints") {
-    quadratureRule = new GaussianFourPoints();
-  } else if (quadType == "GaussianFivePoints") {
-    quadratureRule = new GaussianFivePoints();
+QuadratureRule* makeNewPointerToQuadratureRule(const std::string& t) {
+  QuadratureRule* qr;
+  if (t == "GaussianTwoPoints") {
+    qr = new GaussianTwoPoints();
+  } else if (t == "GaussianThreePoints") {
+    qr = new GaussianThreePoints();
+  } else if (t == "GaussianFourPoints") {
+    qr = new GaussianFourPoints();
+  } else if (t == "GaussianFivePoints") {
+    qr = new GaussianFivePoints();
   } else {
     throw myFEM_INVALID_INPUT_STRING_EXCEPTION;
   }
-  return quadratureRule;
+  return qr;
+}
+
+QuadratureRule* makeNewPointerToQuadratureRule(unsigned int nqp) {
+  QuadratureRule* qr;
+  if (nqp == 2) {
+    qr = new GaussianTwoPoints();
+  } else if (nqp == 3) {
+    qr = new GaussianThreePoints();
+  } else if (nqp == 4) {
+    qr = new GaussianFourPoints();
+  } else if (nqp == 5) {
+    qr = new GaussianFivePoints();
+  } else {
+    throw myFEM_INVALID_INPUT_STRING_EXCEPTION;
+  }
+  return qr;
 }
 ////////////////////////// SHAPE FUNCTIONS //////////////////////////////////////
 class BasisFunctions {
 public:
-  BasisFunctions() : t("notype") { }
+  BasisFunctions() : t("notype"), o(0) { }
   ~BasisFunctions() { }
   BasisFunctions(const BasisFunctions& bf) : n(bf.n), t(bf.t) { }
   BasisFunctions& operator=(const BasisFunctions& bf) { if (this==&bf) return *this; n = bf.n; t = bf.t; return *this; }
@@ -186,6 +206,7 @@ public:
   Point getNode(unsigned int idof) const { return n[idof]; }
   std::vector<Point> getNodes() const { return n; }
   std::string getType() const { return t; }
+  unsigned int getOrder() const { return o; }
 
   std::vector<Point> getSupportPoints() const { std::vector<Point> sp; sp.push_back(n[0]); sp.push_back(n[1]); return sp;}
 
@@ -195,7 +216,66 @@ public:
 protected:
   std::vector<Point> n;
   std::string t;
+  unsigned int o;
 }; // end class BasisFunctions
+
+class PiecewisePolynomial : public BasisFunctions {
+public:             
+  PiecewisePolynomial(unsigned int u, std::vector<Point> sp) { 
+    assert(sp.size() == 2); 
+    n.push_back(sp[0] + (sp[1] - sp[0]) * double(0) / double(u)); 
+    n.push_back(sp[0] + (sp[1] - sp[0]) * double(u) / double(u)); 
+    for (unsigned int a = 1; a < u; ++a) {
+      n.push_back(sp[0] + (sp[1] - sp[0]) * double(a) / double(u)); 
+    } // end for
+    t = "PiecewisePolynomial"; 
+    o = u;
+    assert(o == n.size() - 1);
+  }
+
+  double getVal(unsigned int idof, const Point& p) const {
+    assert(n[0].x <= p.x); assert(p.x <= n[1].x); assert(idof < n.size());
+    double value = 1.0;
+    for (unsigned int a = 0; a < n.size(); ++a) {
+      if (a != idof) {
+        value *= (n[a].x - p.x) / (n[a].x - n[idof].x);
+      } // end if a
+    } // end for a
+    return value;
+  }
+
+  double getDx(unsigned int idof, const Point& p) const {
+    assert(n[0].x <= p.x); assert(p.x <= n[1].x); assert(idof < n.size());
+    double value = 0.0;
+    static unsigned int k = 0;
+//    std::cout<<">>>>"<<++k<<"<<<<  n.size()="<<n.size()<<"  o="<<o<<"  idof="<<idof<<"\n";
+//    std::cout<<"parenthesis open\n";
+    for (unsigned int a = 0; a < n.size(); ++a) {
+      if (a != idof) {
+        double tmp = 1.0;
+//        std::cout<<"minus one times\n";
+        for (unsigned int b = 0; b < n.size(); ++b) {
+          if ((b != idof) 
+              && (b != a)) {
+//            std::cout<<"a="<<a<<"  b="<<b<<" times\n";
+            tmp *= (n[b].x - p.x);
+          } // end if b
+        } // end for b
+        value -= tmp;
+      } //end if a
+    } //end if a
+//    std::cout<<"parenthesis close\n";
+    for (unsigned int a = 0; a < n.size(); ++a) {
+      if (a != idof) {
+//         std::cout<<"divided by a="<<a<<"\n";
+        value /= (n[a].x - n[idof].x);
+      } //end if a
+    } //end if a
+//    std::cout<<std::endl;
+//    if (k>=10) abort();
+    return value;
+  }
+}; // end PiecewisePolynomial
 
 class PiecewiseLinear : public BasisFunctions {
 public:             
@@ -204,6 +284,7 @@ public:
     n.push_back(sp[0] + (sp[1] - sp[0]) * double(0) / double(1)); 
     n.push_back(sp[0] + (sp[1] - sp[0]) * double(1) / double(1)); 
     t = "PiecewiseLinear"; 
+    o = 1;
   }
 
   double getVal(unsigned int idof, const Point& p) const {
@@ -241,6 +322,7 @@ public:
     n.push_back(sp[0] + (sp[1] - sp[0]) * double(2) / double(2)); 
     n.push_back(sp[0] + (sp[1] - sp[0]) * double(1) / double(2)); 
     t = "PiecewiseQuadratic"; 
+    o = 2;
   }
 
   double getVal(unsigned int idof, const Point& p) const {
@@ -283,6 +365,7 @@ public:
     n.push_back(sp[0] + (sp[1] - sp[0]) * double(1) / double(3)); 
     n.push_back(sp[0] + (sp[1] - sp[0]) * double(2) / double(3)); 
     t = "PiecewiseCubic"; 
+    o = 3;
   }
 
   double getVal(unsigned int idof, const Point& p) const {
@@ -320,62 +403,16 @@ public:
   }
 }; // end class PiecewiseCubic
 
-// TODO: quartic shape functions need debug
-class PiecewiseQuartic : public BasisFunctions {
-public:             
-  PiecewiseQuartic(std::vector<Point> sp) { 
-    assert(sp.size() == 2); 
-    n.push_back(sp[0] + (sp[1] - sp[0]) * double(0) / double(4)); 
-    n.push_back(sp[0] + (sp[1] - sp[0]) * double(4) / double(4)); 
-    n.push_back(sp[0] + (sp[1] - sp[0]) * double(1) / double(4)); 
-    n.push_back(sp[0] + (sp[1] - sp[0]) * double(2) / double(4)); 
-    n.push_back(sp[0] + (sp[1] - sp[0]) * double(3) / double(4)); 
-    t = "PiecewiseQuartic"; 
-  }
-
-  double getVal(unsigned int idof, const Point& p) const {
-    assert(n[0].x <= p.x); assert(p.x <= n[1].x);
-    double value;
-    if (idof == 0) {
-      value = (n[1].x - p.x) * (n[2].x - p.x) * (n[3].x - p.x) * (n[4].x - p.x) / ((n[1].x - n[0].x) * (n[2].x - n[0].x) * (n[3].x - n[0].x) * (n[4].x - n[0].x)); 
-    } else if (idof == 1) {
-      value = (n[2].x - p.x) * (n[3].x - p.x) * (n[4].x - p.x) * (n[0].x - p.x) / ((n[2].x - n[1].x) * (n[3].x - n[1].x) * (n[4].x - n[1].x) * (n[0].x - n[1].x)); 
-    } else if (idof == 2) {
-      value = (n[3].x - p.x) * (n[4].x - p.x) * (n[0].x - p.x) * (n[1].x - p.x) / ((n[3].x - n[2].x) * (n[4].x - n[2].x) * (n[0].x - n[2].x) * (n[1].x - n[2].x)); 
-    } else if (idof == 3) {
-      value = (n[4].x - p.x) * (n[0].x - p.x) * (n[1].x - p.x) * (n[2].x - p.x) / ((n[4].x - n[3].x) * (n[0].x - n[3].x) * (n[1].x - n[3].x) * (n[2].x - n[3].x)); 
-    } else if (idof == 4) {
-      value = (n[0].x - p.x) * (n[1].x - p.x) * (n[2].x - p.x) * (n[3].x - p.x) / ((n[0].x - n[4].x) * (n[1].x - n[4].x) * (n[2].x - n[4].x) * (n[3].x - n[4].x)); 
-    } else {
-      throw myFEM_DOF_OUT_OF_RANGE_EXCEPTION;
-    }
-    return value;
-  }
-
-  double getDx(unsigned int idof, const Point& p) const {
-    assert(n[0].x <= p.x); assert(p.x <= n[1].x);
-    double value;
-    if (idof == 0) {
-      value = ( - (n[2].x - p.x) * (n[3].x - p.x) * (n[4].x - p.x) - (n[1].x - p.x) * (n[3].x - p.x) * (n[4].x - p.x) - (n[1].x - p.x) * (n[2].x - p.x) * (n[4].x - p.x) - (n[1].x - p.x) * (n[2].x - p.x) * (n[3].x - p.x)) / ((n[1].x - n[0].x) * (n[2].x - n[0].x) * (n[3].x - n[0].x) * (n[4].x - n[0].x)); 
-    } else if (idof == 1) {
-      value = ( - (n[3].x - p.x) * (n[4].x - p.x) * (n[0].x - p.x) - (n[2].x - p.x) * (n[4].x - p.x) * (n[0].x - p.x) - (n[2].x - p.x) * (n[3].x - p.x) * (n[0].x - p.x) - (n[2].x - p.x) * (n[3].x - p.x) * (n[4].x - p.x)) / ((n[2].x - n[1].x) * (n[3].x - n[1].x) * (n[4].x - n[1].x) * (n[0].x - n[1].x)); 
-    } else if (idof == 2) {
-      value = ( - (n[4].x - p.x) * (n[0].x - p.x) * (n[1].x - p.x) - (n[3].x - p.x) * (n[0].x - p.x) * (n[1].x - p.x) - (n[3].x - p.x) * (n[4].x - p.x) * (n[1].x - p.x) - (n[3].x - p.x) * (n[4].x - p.x) * (n[0].x - p.x)) / ((n[3].x - n[2].x) * (n[4].x - n[2].x) * (n[0].x - n[2].x) * (n[1].x - n[2].x)); 
-    } else if (idof == 3) {
-      value = ( - (n[1].x - p.x) * (n[1].x - p.x) * (n[2].x - p.x) - (n[4].x - p.x) * (n[1].x - p.x) * (n[2].x - p.x) - (n[4].x - p.x) * (n[0].x - p.x) * (n[2].x - p.x) - (n[4].x - p.x) * (n[0].x - p.x) * (n[1].x - p.x)) / ((n[4].x - n[3].x) * (n[0].x - n[3].x) * (n[1].x - n[3].x) * (n[2].x - n[3].x)); 
-    } else if (idof == 4) {
-      value = ( - (n[0].x - p.x) * (n[2].x - p.x) * (n[3].x - p.x) - (n[0].x - p.x) * (n[2].x - p.x) * (n[3].x - p.x) - (n[0].x - p.x) * (n[1].x - p.x) * (n[3].x - p.x) - (n[0].x - p.x) * (n[1].x - p.x) * (n[2].x - p.x)) / ((n[0].x - n[4].x) * (n[1].x - n[4].x) * (n[2].x - n[4].x) * (n[3].x - n[4].x)); 
-    } else {
-      throw myFEM_DOF_OUT_OF_RANGE_EXCEPTION;
-    }
-    return value;
-  }
-}; // end class PiecewiseQuartic
-
 ////////////////////////// REFERENCE ELEMENT //////////////////////////////////////
 class ReferenceElement {
 public:
-  ReferenceElement(const std::string& s = "PiecewiseLinear") { 
+  ReferenceElement(unsigned int u) {
+    std::vector<Point> sp; 
+    sp.push_back(Point(-1.0));
+    sp.push_back(Point(1.0));
+    bf = new PiecewisePolynomial(u, sp);
+  }
+  ReferenceElement(const std::string& s = "PiecewiseLinear", unsigned int u = 0) { 
     std::vector<Point> sp; 
     sp.push_back(Point(-1.0));
     sp.push_back(Point(1.0));
@@ -385,8 +422,9 @@ public:
       bf = new PiecewiseQuadratic(sp);
     } else if (s == "PiecewiseCubic") {
       bf = new PiecewiseCubic(sp);
-    } else if (s == "PiecewiseQuartic") {
-      bf = new PiecewiseQuartic(sp);
+    } else if (s == "PiecewisePolynomial") {
+      assert(u != 0);
+      bf = new PiecewisePolynomial(u, sp);
     } else {
       throw myFEM_INVALID_INPUT_STRING_EXCEPTION;
     }
@@ -400,6 +438,7 @@ public:
   double getVal(unsigned int idof, Point p) const { return bf->getVal(idof, p); }
   double getDx(unsigned int idof, Point p) const { return bf->getDx(idof, p); }
   std::string getTypeOfBasisFunctions() const { return bf->getType(); }
+  unsigned int getOrder() const { return bf->getOrder(); }
 
 protected:
   BasisFunctions *bf;
@@ -453,6 +492,8 @@ public:
   unsigned int getNumberOfNodes() const { return re->getNumberOfNodes(); }
   unsigned int getNumberOfDOF() const { assert(dof.size() != 0); return dof.size(); }
   std::map<unsigned int, unsigned int> getDOFMap() const { assert(m.size() != 0); return m; }
+  std::string getTypeOfBasisFunctions() const { return re->getTypeOfBasisFunctions(); }
+  unsigned int getOrder() const { return re->getOrder(); }
 
 protected:
   std::vector<Point> sp;
@@ -461,7 +502,42 @@ protected:
   ReferenceElement *re;
 }; // end class FiniteElement
 
-////////////////////////// FE Values //////////////////////////////////////
+////////////////////////// DOF HANDLER //////////////////////////////////////
+class DOFHandler { 
+public:
+  DOFHandler(std::vector<FiniteElement*>* m) : ndof(0), fe(m) { }
+  ~DOFHandler() { }
+  
+  void distributeDOF() {
+    assert(ndof == 0);
+    const unsigned int nel = fe->size();
+    unsigned int prec = 0;
+    for (unsigned int iel = 0; iel < nel; ++iel) {
+      unsigned int iord = (*fe)[iel]->getOrder();
+      unsigned int prev = (iel > 0 ? ndof - (*fe)[iel-1]->getOrder() : 0);
+      std::vector<unsigned int> dof;
+      if (iel > 0) { 
+        dof.push_back(prev);
+      } else {
+        assert(ndof == 0);
+        dof.push_back(ndof++);
+      } // end if first element
+      for (unsigned a = 0; a < iord; ++a) {
+        dof.push_back(ndof++);
+      } // end add nodes
+      (*fe)[iel]->setDOF(dof);
+    } // end for iel
+    assert(ndof != 0);
+  }
+
+  unsigned int getNumberOfDOF() const { assert(ndof != 0); return ndof; }
+
+protected:
+  unsigned int ndof;
+  std::vector<FiniteElement*>* fe;
+}; // end class DOFHandler
+
+////////////////////////// FE VALUES //////////////////////////////////////
 class UpdateFlags { };
 class FEValues {
 public:
@@ -800,8 +876,8 @@ int main(int argc, char *argv[]) {
   { /** nouveau test */
   // Default values
   unsigned int nel = 10;
-  std::string basisType = "PiecewiseLinear";
-  std::string quadType = "GaussianTwoPoints";
+  unsigned int polynomialOrder = 1;
+  unsigned int numberOfGaussPoints = 2;
   //TODO: make command line argument passing smarter than this
   std::string errorMessage = std::string("Usage: argv[0] number_of_elements type_of_basis_functions type_of_quadrature_rule\n")
                            + std::string("number_of_elements -> a positive integer [default value is 10]\n")
@@ -818,32 +894,18 @@ int main(int argc, char *argv[]) {
     nel = atoi(argv[1]);
   }
   if (argc > 2) {
-    if (atoi(argv[2]) == 1) { 
-      basisType = "PiecewiseLinear"; 
-    } else if (atoi(argv[2]) == 2) {
-      basisType = "PiecewiseQuadratic"; 
-    } else if (atoi(argv[2]) == 3) {
-      basisType = "PiecewiseCubic"; 
-    } else if (atoi(argv[2]) == 4) {
-      basisType = "PiecewiseQuartic"; 
-    } else {
-      std::cerr<<errorMessage<<std::endl;
+    if (atoi(argv[2]) > 4) { 
+      std::cerr<<"doucement garcon as tu vraiment besoin d'un ordre aussi eleve?"<<std::endl;
       abort();
-    }
+    } // if order too big
+      polynomialOrder = atoi(argv[2]);
   }
   if (argc > 3) {
-    if (atoi(argv[3]) == 2) { 
-      quadType = "GaussianTwoPoints"; 
-    } else if (atoi(argv[3]) == 3) {
-      quadType = "GaussianThreePoints"; 
-    } else if (atoi(argv[3]) == 4) {
-      quadType = "GaussianFourPoints"; 
-    } else if (atoi(argv[3]) == 5) {
-      quadType = "GaussianFivePoints"; 
-    } else {
-      std::cerr<<errorMessage<<std::endl;
+    if (atoi(argv[3]) >  5) { 
+      std::cerr<<"max quadrature rule is 5 points"<<std::endl;
       abort();
     }
+    numberOfGaussPoints = atoi(argv[3]);
   }
 
   std::cout<<"#### BEGIN ######\n";
@@ -851,7 +913,7 @@ int main(int argc, char *argv[]) {
   std::cout<<"#### BUILD FINITE ELEMENTS ######\n";
   std::vector<FiniteElement*> finiteElements;
   // Create a pointer to a reference element
-  ReferenceElement *referenceElement = new ReferenceElement(basisType);
+  ReferenceElement *referenceElement = new ReferenceElement(polynomialOrder);
 
   // Create triangualtion embryo
   // TODO: move towards Triangulation class
@@ -865,68 +927,12 @@ int main(int argc, char *argv[]) {
   } // end for iel
 
   // Distribute the Degrees Of Freedoms (DOF)
-  // TODO: need to come up with something better than this
-  //       DOFHandler class
-  unsigned int ndof = 0;
-  if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseLinear") {
-    ndof = nel + 1;
-    for (unsigned int iel = 0; iel < nel; ++iel) { 
-      std::vector<unsigned int> dof;
-      if (iel > 0) { 
-        dof.push_back(1*iel-0);
-      } else {
-        dof.push_back(1*iel+0);
-      } // end if iel
-      dof.push_back(iel+1);
-      finiteElements[iel]->setDOF(dof);
-    } // end for iel
-  } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseQuadratic") {
-    ndof = 2 * nel + 1;
-    for (unsigned int iel = 0; iel < nel; ++iel) { 
-      std::vector<unsigned int> dof;
-      if (iel > 0) { 
-        dof.push_back(2*iel-1);
-      } else {
-        dof.push_back(2*iel+0);
-      } // end if iel
-      dof.push_back(2*iel+1);
-      dof.push_back(2*iel+2);
-      finiteElements[iel]->setDOF(dof);
-      //for (unsigned int ii = 0; ii < dof.size(); ++ii) std::cout<<dof[ii]<<"  "; std::cout<<"\n";
-    } // end for iel
-  } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseCubic") {
-    ndof = 3 * nel + 1;
-    for (unsigned int iel = 0; iel < nel; ++iel) { 
-      std::vector<unsigned int> dof;
-      if (iel > 0) { 
-        dof.push_back(3*iel-2);
-      } else {
-        dof.push_back(3*iel+0);
-      } // end if iel
-      dof.push_back(3*iel+1);
-      dof.push_back(3*iel+2);
-      dof.push_back(3*iel+3);
-      finiteElements[iel]->setDOF(dof);
-      //for (unsigned int ii = 0; ii < dof.size(); ++ii) std::cout<<dof[ii]<<"  "; std::cout<<"\n";
-    } // end for iel
-  } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseQuartic") {
-    ndof = 4 * nel + 1;
-    for (unsigned int iel = 0; iel < nel; ++iel) { 
-      std::vector<unsigned int> dof;
-      if (iel > 0) { 
-        dof.push_back(4*iel-3);
-      } else {
-        dof.push_back(4*iel+0);
-      } // end if iel
-      dof.push_back(4*iel+1);
-      dof.push_back(4*iel+2);
-      dof.push_back(4*iel+3);
-      dof.push_back(4*iel+4);
-      finiteElements[iel]->setDOF(dof);
-      //for (unsigned int ii = 0; ii < dof.size(); ++ii) std::cout<<dof[ii]<<"  "; std::cout<<"\n";
-    } // end for iel
-  } // end if type of basis functions
-  assert(ndof != 0);
+  std::cout<<"#### DISTRIBUTE DOF ######\n";
+  std::cout<<std::endl;
+  DOFHandler* dofHandler = new DOFHandler(&finiteElements);
+  dofHandler->distributeDOF();
+  std::cout<<"OK"<<std::endl;
+  unsigned int ndof = dofHandler->getNumberOfDOF();
 
   // Create global matrix and global rhs
   std::vector<std::vector<double> > globalMatrix(ndof, std::vector<double>(ndof, 0.0));
@@ -939,7 +945,7 @@ int main(int argc, char *argv[]) {
   std::vector<double> nullVector;
 
   // Create pointer to a quadrature rule
-  QuadratureRule *quadratureRule = makeNewPointerToQuadratureRule(quadType);
+  QuadratureRule *quadratureRule = makeNewPointerToQuadratureRule(numberOfGaussPoints);
 
   std::cout<<"#### ASSEMBLE MATRIX AND RHS ######\n";
   UpdateFlags updateFlags;
@@ -990,14 +996,8 @@ int main(int argc, char *argv[]) {
   //abort();
 
   // Print matrix and RHS to files to check with matlab
-  std::fstream foutMatrix;
-  std::fstream foutRHS;
-  foutMatrix.open("matrix.dat", std::fstream::out);
-  foutRHS.open("rhs.dat", std::fstream::out);
-  printMatrixAndVector(globalMatrix, nullVector, myFEM_MATRIX_ONLY, foutMatrix, 9, 5, myFEM_MAX_DEBUG);
-  printMatrixAndVector(nullMatrix, globalRHS, myFEM_VECTOR_ONLY, foutRHS, 9, 5, myFEM_MAX_DEBUG);
-  foutMatrix.close();
-  foutRHS.close();
+  std::fstream foutMatrix; foutMatrix.open("matrix.dat", std::fstream::out); printMatrixAndVector(globalMatrix, nullVector, myFEM_MATRIX_ONLY, foutMatrix, 9, 5, myFEM_MAX_DEBUG); foutMatrix.close();
+  std::fstream foutRHS; foutRHS.open("rhs.dat", std::fstream::out); printMatrixAndVector(nullMatrix, globalRHS, myFEM_VECTOR_ONLY, foutRHS, 9, 5, myFEM_MAX_DEBUG); foutRHS.close();
 
 #ifdef EBILE
   std::cout<<"tu te crois malin hein? gros ebile :D\n";
@@ -1014,21 +1014,22 @@ int main(int argc, char *argv[]) {
   // Compute exact solution
   // TODO: come up with something better than this
   //       need iterator over nodes
-  //       DOFHandler class
   std::vector<double> exactSolutionVector(ndof);
   for (unsigned int iel = 0; iel < nel; ++iel) {
     std::vector<Point> supportPoints;
     supportPoints.push_back(startPoint+double(iel)/double(nel)*(endPoint-startPoint));
     supportPoints.push_back(startPoint+double(iel+1)/double(nel)*(endPoint-startPoint));
     //std::cout<<iel<<"  "<<supportPoints[0]<<"  "<<supportPoints[1]<<"\n";
-    if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseLinear") {
+//    if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseLinear") {
+    if (referenceElement->getOrder() == 1) {
       if (iel > 0) {
         exactSolutionVector[1*iel-0] = u(supportPoints[0] + (supportPoints[1] - supportPoints[0]) * double(0) / double(1));
       } else {
         exactSolutionVector[1*iel+0] = u(supportPoints[0] + (supportPoints[1] - supportPoints[0]) * double(0) / double(1));
       } // end if iel
       exactSolutionVector[1*iel+1] = u(supportPoints[0] + (supportPoints[1] - supportPoints[0]) * double(1) / double(1));
-    } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseQuadratic") {
+//    } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseQuadratic") {
+    } else if (referenceElement->getOrder() == 2) {
       if (iel > 0) {
         exactSolutionVector[2*iel-1] = u(supportPoints[0] + (supportPoints[1] - supportPoints[0]) * double(0) / double(2));
       } else {
@@ -1036,7 +1037,8 @@ int main(int argc, char *argv[]) {
       } // end if iel
       exactSolutionVector[2*iel+1] = u(supportPoints[0] + (supportPoints[1] - supportPoints[0]) * double(2) / double(2));
       exactSolutionVector[2*iel+2] = u(supportPoints[0] + (supportPoints[1] - supportPoints[0]) * double(1) / double(2));
-    } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseCubic") {
+//    } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseCubic") {
+    } else if (referenceElement->getOrder() == 3) {
       if (iel > 0) {
         exactSolutionVector[3*iel-2] = u(supportPoints[0] + (supportPoints[1] - supportPoints[0]) * double(0) / double(3));
       } else {
@@ -1045,7 +1047,8 @@ int main(int argc, char *argv[]) {
       exactSolutionVector[3*iel+1] = u(supportPoints[0] + (supportPoints[1] - supportPoints[0]) * double(3) / double(3));
       exactSolutionVector[3*iel+2] = u(supportPoints[0] + (supportPoints[1] - supportPoints[0]) * double(1) / double(3));
       exactSolutionVector[3*iel+3] = u(supportPoints[0] + (supportPoints[1] - supportPoints[0]) * double(2) / double(3));
-    } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseQuartic") {
+//    } else if (referenceElement->getTypeOfBasisFunctions() == "PiecewiseQuartic") {
+    } else if (referenceElement->getOrder() == 4) {
       if (iel > 0) {
         exactSolutionVector[4*iel-3] = u(supportPoints[0] + (supportPoints[1] - supportPoints[0]) * double(0) / double(4));
       } else {
@@ -1123,13 +1126,6 @@ int main(int argc, char *argv[]) {
   delete referenceElement;
   }
 
-  if (false)
-  { /** test point operations */
-  Point *pp;
-  pp = new Point(-3.0);
-  std::cout<<*pp<<pp->x<<2.0*(*pp)<<*pp/3.0<<*pp+(*pp)<<*pp-(*pp)<<std::endl;
-  delete pp;
-  }
 
   if (false)
   { /** test basis functions */
