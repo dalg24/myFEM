@@ -1,24 +1,23 @@
 CC = g++
 SRC = myFEM.cpp
 EXE = myFEM.exe
+OBJ = myFEM.o
 
-I = -I/usr/include/suitesparse
-
-L = -L/usr/lib
-
-CFLAGS = -lm -lamd -lumfpack -lmetis -lblas
-
+LDLIBS = -I/usr/include/suitesparse
+LDFLAGS = -L/usr/lib
+CFLAGS = -lm -lamd -lumfpack -lmetis -lblas -g -Wall
 CDEFS = -DEBILE
-LDFLAGS =
 
-all:
-	${CC} $(CDEFS) $(I) -c ${SRC} 
-	${CC} *.o $(L) $(CFLAGS) $(LDFLAGS) -o ${EXE}
+$(EXE) : $(OBJ)
+	$(CC) $(OBJ) $(LDFLAGS) -o $(EXE)
+
+$(OBJ) : $(SRC)
+	$(CC) $(CDEFS) $(CFLAGS) $(LDLIBS) -c $(SRC)
 
 clean:
-	rm *.o
+	rm $(OBJ)
 
 cleanall:
-	rm *.o
-	rm -f ${EXE}
+	rm $(OBJ)
+	rm -f $(EXE)
 
